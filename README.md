@@ -689,16 +689,16 @@ sequenceDiagram
 
 ## Future Extensions
 
-The following are candidates for future specification versions:
+The following extensions are specified as separate documents:
 
-| Extension | Description |
-| --- | --- |
-| Session Resume | Reconnect after network disruption with session ID |
-| Session Persistence | Long-lived sessions surviving client disconnect |
-| WebRTC Transport | Data channels for lower latency |
-| Multiplexing | Multiple logical sessions over single connection |
-| File Transfer | SCP/SFTP support |
-| Port Forwarding | SSH port forwarding tunnels |
+| Extension | Status | Description |
+| --- | --- | --- |
+| [Session Resume](docs/ext-session-resume.md) | Draft | Reconnect after network disruption with session ID |
+| [Session Persistence](docs/ext-session-persistence.md) | Draft | Long-lived sessions surviving client disconnect |
+| [WebRTC Transport](docs/ext-webrtc-transport.md) | Draft | Data channels for lower latency |
+| [Multiplexing](docs/ext-multiplexing.md) | Draft | Multiple logical sessions over single connection |
+| [File Transfer](docs/ext-file-transfer.md) | Draft | SCP/SFTP support |
+| [Port Forwarding](docs/ext-port-forwarding.md) | Draft | SSH port forwarding tunnels |
 
 ---
 
