@@ -629,7 +629,8 @@ When the transport is a single stream (WebSocket, TCP, stdio), all channels are 
 
 | Transport | Specification | Primary/Fallback |
 |-----------|---------------|-----------------|
-| WebRTC DataChannel | [openmux-on-webrtc.md](docs/openmux-on-webrtc.md) | **Primary** |
+| QUIC / WebTransport | [openmux-on-quic.md](docs/openmux-on-quic.md) | **Optimal** (when available) |
+| WebRTC DataChannel | [openmux-on-webrtc.md](docs/openmux-on-webrtc.md) | **Primary** (universal browser support) |
 | WebSocket | [openmux-on-websocket.md](docs/openmux-on-websocket.md) | Fallback |
 | TCP | [openmux-on-tcp.md](docs/openmux-on-tcp.md) | Server-to-server |
 | stdio | [openmux-on-stdio.md](docs/openmux-on-stdio.md) | Process IPC |
