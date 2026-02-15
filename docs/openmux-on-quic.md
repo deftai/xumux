@@ -97,6 +97,19 @@ QUIC provides two primitives that map perfectly to OpenMux:
 
 This is cleaner than WebRTC DataChannels because QUIC streams are lightweight (just a stream ID, no negotiation) and can be created/destroyed instantly.
 
+### Stream Creation Rules
+
+**Who opens which streams:**
+
+1. The **client** opens the first bidirectional stream (stream 0) and sends HELLO on it. This is always the control channel.
+2. After processing HELLO, the **server** opens bidirectional streams for each accepted reliable channel and includes `streamId` in WELCOME.
+3. For dynamic channels (OPEN_CHANNEL after handshake), the **requesting side** opens the new QUIC stream, then sends OPEN_CHANNEL on the control stream. CHANNEL_ACK confirms with the `streamId`.
+
+**Stream identification:** Before WELCOME is processed, the receiver cannot know which stream corresponds to which channel. Therefore:
+- Stream 0 is **always** the control channel (by convention, like WebRTC's negotiated DataChannel ID 0).
+- All other streams MUST include the correct Channel byte in the OpenMux frame header. The receiver uses the Channel byte to identify the channel, cross-referencing with the `streamId` mappings from WELCOME.
+- If a frame arrives on an unknown stream with an unknown Channel byte, the receiver MUST send ERROR (code 4003, CHANNEL_NOT_FOUND) on the control stream.
+
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 graph TD

@@ -59,6 +59,20 @@ graph TB
 
 ## Core Specification
 
+### Magic Number
+
+On stream-oriented transports (TCP, stdio) where there is no protocol negotiation at the transport level, implementations MUST send 4 magic bytes before the first OpenMux frame:
+
+```
+0x4F 0x4D 0x55 0x58  ("OMUX")
+```
+
+The receiver MUST validate these 4 bytes. If they don't match, the connection MUST be closed immediately — the remote side does not speak OpenMux.
+
+On message-oriented transports (WebSocket, WebRTC DataChannel) where protocol identification happens at the transport level (e.g., WebSocket subprotocol header, DataChannel protocol field), the magic number MUST NOT be sent.
+
+On QUIC/WebTransport, the magic number MUST NOT be sent (protocol is identified via ALPN/URL).
+
 ### Frame Format
 
 All OpenMux messages use a 6-byte header followed by an optional payload:
@@ -129,6 +143,11 @@ sequenceDiagram
 ```
 
 All fragments MUST have the same Channel, Type, and be delivered in order on that channel. The receiver reassembles until it sees `FRAGMENT_END`.
+
+**Restrictions**:
+- Fragmentation MUST NOT be used on channels declared as `unordered` or `unreliable`. Out-of-order or lost fragments cannot be reassembled.
+- Fragmentation MUST NOT be used on QUIC datagrams (see QUIC binding).
+- Only one fragmented message may be in-flight per channel at a time. Interleaving fragments from different messages on the same channel is a protocol error.
 
 ---
 
@@ -221,7 +240,11 @@ sequenceDiagram
 
 #### HELLO (0x01) — Client → Server
 
-The first message after transport establishment. MUST be sent by the client. Payload is JSON (UTF-8).
+The first message after transport establishment. MUST be sent by the client.
+
+> **Encoding convention**: All control channel (0x00) messages with variable-length payloads use **JSON (UTF-8)**. This keeps the control plane human-readable and debuggable. Application channels (1-254) use whatever encoding the application protocol defines (typically binary for hot-path events, JSON for control).
+>
+> The only non-JSON control messages are PING and PONG, which use fixed-size binary payloads for efficiency.
 
 ```json
 {
@@ -232,11 +255,6 @@ The first message after transport establishment. MUST be sent by the client. Pay
   "pingInterval": 30,
   "pingTimeout": 10,
   "channels": [
-    {
-      "name": "control",
-      "reliable": true,
-      "ordered": true
-    },
     {
       "name": "pointer",
       "reliable": false,
@@ -264,7 +282,7 @@ The first message after transport establishment. MUST be sent by the client. Pay
 | `maxMessageSize` | number | MAY | Max payload bytes. Default: 65535. 0 = no limit. |
 | `pingInterval` | number | MAY | Keepalive interval in seconds. Default: 30. 0 = disabled. |
 | `pingTimeout` | number | MAY | Seconds to wait for PONG before disconnect. Default: 10. |
-| `channels` | Channel[] | SHOULD | Channels to open during handshake |
+| `channels` | Channel[] | MAY | Application channels to open during handshake. **Do NOT include the control channel** — channel 0 is always implicit. |
 | `auth` | object | MAY | Authentication credentials |
 
 **Channel object:**
@@ -290,7 +308,6 @@ Sent in response to HELLO. Payload is JSON (UTF-8).
   "pingInterval": 30,
   "pingTimeout": 10,
   "channels": [
-    {"name": "control", "id": 0},
     {"name": "pointer", "id": 1},
     {"name": "button", "id": 2}
   ]
@@ -313,7 +330,55 @@ Sent in response to HELLO. Payload is JSON (UTF-8).
 | `name` | string | Channel name (matches request) |
 | `id` | number | Assigned channel ID (1-254). Used in frame Channel byte. |
 
-**Channel ID 0** is always the control channel. Server assigns IDs 1-254 to application channels. ID 255 is reserved.
+**Channel ID 0** is always the control channel (implicit, never listed in HELLO/WELCOME). Server assigns IDs 1-254 to application channels. ID 255 is reserved.
+
+#### Handshake Rejection
+
+If the server cannot accept the connection (authentication failed, version incompatible, application unsupported), it MUST respond with a **CLOSE** message instead of WELCOME:
+
+```json
+{
+  "code": 4000,
+  "reason": "Authentication failed"
+}
+```
+
+The client MUST treat receiving CLOSE instead of WELCOME as a rejected handshake.
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C->>S: HELLO {version, auth, ...}
+
+    alt Version + auth OK
+        S->>C: WELCOME {version, channels, ...}
+        Note over C,S: Connection established
+    else Auth failed
+        S->>C: CLOSE {code: 4000, reason: "auth failed"}
+        Note over C,S: Connection rejected
+    else Version incompatible
+        S->>C: CLOSE {code: 4006, reason: "unsupported version"}
+        Note over C,S: Connection rejected
+    else Application unsupported
+        S->>C: CLOSE {code: 1003, reason: "unknown application"}
+        Note over C,S: Connection rejected
+    end
+```
+
+#### Version Negotiation
+
+The client sends its version in HELLO. The server responds in WELCOME with its own version. Compatibility rules:
+
+- **Major version mismatch**: Server MUST reject with CLOSE code `4006` (VERSION_MISMATCH). Major versions are not backward-compatible.
+- **Minor version mismatch**: Server SHOULD accept. The effective protocol version is the minimum of both minor versions. Features from higher minor versions MUST NOT be used.
+- **Patch version mismatch**: Always compatible. Informational only.
+
+#### HELLO Timeout
+
+Servers MUST enforce a timeout for receiving HELLO after transport establishment. Default: **10 seconds**. If no HELLO is received, the server MUST close the transport.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
@@ -429,6 +494,8 @@ Close an existing channel. Sent on channel 0. Payload is JSON (UTF-8).
 
 After CLOSE_CHANNEL, the channel ID is **freed** and MAY be reused for future OPEN_CHANNEL requests. Both sides MUST stop sending on the channel immediately. Any in-flight messages on the closed channel SHOULD be discarded.
 
+**Guard**: CLOSE_CHANNEL MUST NOT be sent for channel 0. The control channel can only be closed via CLOSE (which closes the entire connection). Implementations receiving CLOSE_CHANNEL for channel 0 MUST respond with ERROR code 1002 (PROTOCOL_ERROR).
+
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 stateDiagram-v2
@@ -540,6 +607,8 @@ Errors are informational — they do NOT close the connection or channel unless 
 
 ### Error Codes
 
+Codes 1000-1003 are intentionally aligned with [WebSocket close codes (RFC 6455)](https://www.rfc-editor.org/rfc/rfc6455#section-7.4.1) for consistency. When closing a WebSocket transport, implementations SHOULD send an OpenMux CLOSE first, then close the WebSocket with code 1000 (normal). The OpenMux close code carries the application-level reason; the WebSocket close code is always 1000 (or 1001 for going away).
+
 | Code | Name | Description |
 |------|------|-------------|
 | 1000 | NORMAL | Normal closure |
@@ -552,6 +621,8 @@ Errors are informational — they do NOT close the connection or channel unless 
 | 4003 | CHANNEL_NOT_FOUND | Message on unknown channel ID |
 | 4004 | RATE_LIMITED | Too many messages |
 | 4005 | MESSAGE_TOO_LARGE | Payload exceeds negotiated max |
+| 4006 | VERSION_MISMATCH | Incompatible protocol version |
+| 4007 | HELLO_TIMEOUT | No HELLO received within timeout |
 | 4100-4999 | Application-defined | Reserved for application protocols |
 
 ---
@@ -643,6 +714,120 @@ OpenMux is a multiplexing layer. Application protocols define what flows over th
 |----------|-------------|------------|
 | **VROOM** | Virtual Remoting Over OpenMux — WebRTC video/audio + interactive browser control for AI agents | [github.com/visionik/vroom](https://github.com/visionik/vroom) |
 | **TermPipe** | Terminal I/O transport (tunnel + PTY modes) — successor to SocketPipe | (this repo, `docs/app-termpipe.md`) |
+
+## Test Vectors
+
+Reference hex dumps for implementors to validate parsers. All multi-byte values are big-endian.
+
+### PING (timestamp = 1000ms)
+
+```
+00 10 00 00 00 04 00 00 03 E8
+│  │  │  │  ├──┘ ├────────┘
+│  │  │  │  │    └─ Payload: uint32 1000 (0x000003E8)
+│  │  │  │  └─ Length: 4
+│  │  │  └─ Reserved: 0x00
+│  │  └─ Flags: 0x00
+│  └─ Type: 0x10 (PING)
+└─ Channel: 0x00 (control)
+```
+
+**Hex**: `00 10 00 00 00 04 00 00 03 E8`
+
+### PONG (echo = 1000ms, receiver = 500ms)
+
+```
+00 11 00 00 00 08 00 00 03 E8 00 00 01 F4
+│  │  │  │  ├──┘ ├────────┘  ├────────┘
+│  │  │  │  │    │            └─ Receiver timestamp: 500
+│  │  │  │  │    └─ Echo timestamp: 1000
+│  │  │  │  └─ Length: 8
+│  │  └─ Flags: 0x00
+│  └─ Type: 0x11 (PONG)
+└─ Channel: 0x00 (control)
+```
+
+**Hex**: `00 11 00 00 00 08 00 00 03 E8 00 00 01 F4`
+
+### MOUSE_MOVE on pointer channel (id=1, x=512, y=300)
+
+```
+01 01 00 00 00 04 02 00 01 2C
+│  │  │  │  ├──┘ ├──┘  ├──┘
+│  │  │  │  │    │      └─ Y: 300 (0x012C)
+│  │  │  │  │    └─ X: 512 (0x0200)
+│  │  │  │  └─ Length: 4
+│  │  └─ Flags: 0x00
+│  └─ Type: 0x01 (MOUSE_MOVE, app-defined)
+└─ Channel: 0x01 (pointer)
+```
+
+**Hex**: `01 01 00 00 00 04 02 00 01 2C`
+
+### HELLO (minimal)
+
+```
+Payload (JSON, UTF-8):
+{"version":[0,1,0],"channels":[]}
+
+Frame header:
+00 01 00 00 00 22
+│  │  │  │  ├──┘
+│  │  │  │  └─ Length: 34 (0x0022)
+│  │  └─ Flags: 0x00
+│  └─ Type: 0x01 (HELLO)
+└─ Channel: 0x00
+
+Full frame hex:
+00 01 00 00 00 22 7B 22 76 65 72 73 69 6F 6E 22 3A 5B 30 2C 31 2C 30 5D 2C 22 63 68 61 6E 6E 65 6C 73 22 3A 5B 5D 7D
+```
+
+### Magic Number (TCP/stdio only)
+
+```
+4F 4D 55 58
+│  │  │  │
+O  M  U  X
+```
+
+Sent once, before the first frame. Not an OpenMux frame — just 4 raw bytes.
+
+---
+
+## Conformance Levels
+
+### Minimal Implementation
+
+A minimal OpenMux implementation MUST support:
+
+- Channel 0 (control) only — no application channels
+- HELLO / WELCOME (handshake)
+- CLOSE (graceful shutdown)
+- ERROR (error reporting)
+- Standard frame format (6-byte header)
+- One transport binding
+
+A minimal implementation MAY omit:
+- PING / PONG (keepalive)
+- OPEN_CHANNEL / CHANNEL_ACK / CHANNEL_REJECT / CLOSE_CHANNEL (dynamic channels)
+- Fragmentation (FRAGMENT / FRAGMENT_END flags)
+- EXTENDED_LENGTH flag
+- Magic number (if not using TCP/stdio)
+
+### Full Implementation
+
+A full OpenMux implementation MUST support everything in minimal, plus:
+
+- Dynamic channels (OPEN_CHANNEL / CHANNEL_ACK / CHANNEL_REJECT / CLOSE_CHANNEL)
+- PING / PONG with RTT measurement
+- Fragmentation
+- EXTENDED_LENGTH
+- Magic number on stream transports
+- HELLO timeout enforcement
+- Version negotiation
+- At least two transport bindings
+
+---
 
 ## Prior Art
 
