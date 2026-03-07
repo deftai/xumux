@@ -424,17 +424,17 @@ Dynamically open a new channel after the handshake. Sent on channel 0. Payload i
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 sequenceDiagram
-    participant A as Side A
-    participant B as Side B
+    participant I as Initiator
+    participant R as Responder
 
-    A->>B: OPEN_CHANNEL {requestId: 1, name: "file-transfer", ...}
+    I->>R: OPEN_CHANNEL {requestId: 1, name: "file-transfer", ...}
 
     alt Accepted
-        B->>A: CHANNEL_ACK {requestId: 1, id: 4}
-        Note over A,B: Channel 4 ("file-transfer") now open
+        R->>I: CHANNEL_ACK {requestId: 1, id: 4}
+        Note over I,R: Channel 4 ("file-transfer") now open
     else Rejected
-        B->>A: CHANNEL_REJECT {requestId: 1, code: 403, reason: "not authorized"}
-        Note over A,B: Channel not opened
+        R->>I: CHANNEL_REJECT {requestId: 1, code: 403, reason: "not authorized"}
+        Note over I,R: Channel not opened
     end
 ```
 
@@ -499,11 +499,10 @@ After CLOSE_CHANNEL, the channel ID is **freed** and MAY be reused for future OP
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 stateDiagram-v2
-    [*] --> Requested: OPEN_CHANNEL sent
-    Requested --> Open: CHANNEL_ACK received
-    Requested --> [*]: CHANNEL_REJECT received
-    Open --> Closing: CLOSE_CHANNEL sent
-    Open --> Closing: CLOSE_CHANNEL received
+    [*] --> Requested: Initiator sends OPEN_CHANNEL
+    Requested --> Open: Responder sends CHANNEL_ACK
+    Requested --> [*]: Responder sends CHANNEL_REJECT
+    Open --> Closing: Either side sends CLOSE_CHANNEL
     Closing --> [*]: Channel freed
 ```
 

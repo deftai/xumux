@@ -1,211 +1,210 @@
-# SocketPipe Extension: Port Forwarding
+# OpenMux Extension: Port Forwarding
 
-**Status**: Draft  
-**Extension ID**: `port-forwarding`  
-**Depends on**: Core Protocol v1.0, Multiplexing Extension
+**Status**: Draft
+**Extension ID**: `port-forwarding`
+**Depends on**: OpenMux 0.1.0+
 
 ## Overview
 
-Port Forwarding enables SSH-style local and remote port forwarding over SocketPipe connections. This allows secure tunneling of arbitrary TCP services through the SocketPipe connection.
+Port Forwarding enables SSH-style local and remote TCP port forwarding over an OpenMux connection. Each forwarded connection gets its own OpenMux channel, leveraging native multiplexing.
 
 ## Use Cases
 
-- Access remote database through terminal connection
+- Access remote database through an OpenMux connection
 - Expose local development server to remote environment
 - Secure tunneling of web services
 - Jump host / bastion scenarios
 
+## Architecture
+
+Port forwarding control messages are sent on a dedicated `port-forward-ctl` channel. Each individual forwarded TCP connection is assigned its own dynamically opened channel.
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+graph TB
+    subgraph "OpenMux Connection"
+        CH0["Channel 0 — Control"]
+        CHC["Channel 1 — port-forward-ctl"]
+        CH3["Channel 3 — forwarded conn #1"]
+        CH4["Channel 4 — forwarded conn #2"]
+    end
+```
+
 ## Forwarding Types
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
-graph TB
-    subgraph "Local Forwarding (-L)"
-        LC[Local Client] -->|"localhost:8080"| LP[SocketPipe Client]
-        LP -->|"Tunnel"| LS[SocketPipe Server]
-        LS -->|"db.internal:5432"| LDB[(Database)]
-    end
-```
+### Local Forwarding (-L)
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
-graph TB
-    subgraph "Remote Forwarding (-R)"
-        RS[Remote Service] -->|"server:9000"| RP[SocketPipe Server]
-        RP -->|"Tunnel"| RC[SocketPipe Client]
-        RC -->|"localhost:3000"| RD[Dev Server]
-    end
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+graph LR
+    LC["Local App"] -->|"localhost:8080"| OC["OpenMux Client"]
+    OC -->|"OpenMux channel"| OS["OpenMux Server"]
+    OS -->|"TCP"| DB["db.internal:5432"]
 ```
 
-## Protocol Changes
+### Remote Forwarding (-R)
 
-### Capability Negotiation
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+graph RL
+    RU["Remote User"] -->|"server:9000"| OS["OpenMux Server"]
+    OS -->|"OpenMux channel"| OC["OpenMux Client"]
+    OC -->|"TCP"| DS["localhost:3000"]
+```
 
-**Flags** (byte 1 of header):
-- Bit 5: `1` = Port Forwarding supported
+## Channel Setup
 
-### New Message Types
+The `port-forward-ctl` channel is opened during or after handshake:
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C->>S: OPEN_CHANNEL {name: "port-forward-ctl", reliable: true, ordered: true}
+    S->>C: CHANNEL_ACK {id: 1}
+    Note over C,S: Channel 1 carries forwarding control messages
+```
+
+## Control Messages (on port-forward-ctl channel)
 
 | Type | Name | Direction | Description |
-| --- | --- | --- | --- |
-| `0x90` | FORWARD_REQUEST | Both | Request port forward |
-| `0x91` | FORWARD_RESPONSE | Both | Forward request result |
-| `0x92` | FORWARD_CANCEL | Both | Cancel port forward |
-| `0x93` | FORWARD_OPEN | Both | New forwarded connection |
-| `0x94` | FORWARD_OPEN_ACK | Both | Accept forwarded connection |
+|------|------|-----------|-------------|
+| `0x01` | FORWARD_REQUEST | Both | Request a port forward |
+| `0x02` | FORWARD_RESPONSE | Both | Forward request result |
+| `0x03` | FORWARD_CANCEL | Both | Cancel an active forward |
+| `0x04` | FORWARD_CONNECTION | Both | New connection on a forward |
+| `0x05` | FORWARD_CONNECTION_ACK | Both | Accept/reject forwarded connection |
 
-### FORWARD_REQUEST (0x90)
+### FORWARD_REQUEST (0x01)
 
-**Payload**:
+**Payload** (JSON):
+```json
+{
+  "forwardId": 1,
+  "direction": "local",
+  "bindAddress": "localhost",
+  "bindPort": 8080,
+  "targetAddress": "db.internal",
+  "targetPort": 5432
+}
+```
 
-| Field | Size | Description |
-| --- | --- | --- |
-| Forward ID | 4 bytes | Client-assigned forward identifier |
-| Direction | 1 byte | 0 = Local (-L), 1 = Remote (-R) |
-| Bind Address Length | 1 byte | Length of bind address |
-| Bind Address | variable | Address to bind (e.g., "localhost", "0.0.0.0") |
-| Bind Port | 2 bytes | Port to bind |
-| Target Address Length | 1 byte | Length of target address |
-| Target Address | variable | Target host |
-| Target Port | 2 bytes | Target port |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `forwardId` | number | MUST | Unique forward identifier |
+| `direction` | string | MUST | `"local"` (-L) or `"remote"` (-R) |
+| `bindAddress` | string | MUST | Address to bind (e.g., `"localhost"`, `"0.0.0.0"`) |
+| `bindPort` | number | MUST | Port to bind (0 = dynamic) |
+| `targetAddress` | string | MUST | Target host |
+| `targetPort` | number | MUST | Target port |
 
-### FORWARD_RESPONSE (0x91)
+### FORWARD_RESPONSE (0x02)
 
-**Flags**:
-- Bit 0: `1` = Success, `0` = Failure
+**Payload** (JSON):
+```json
+{
+  "forwardId": 1,
+  "success": true,
+  "actualPort": 8080
+}
+```
 
-**Success Payload**:
+On failure:
+```json
+{
+  "forwardId": 1,
+  "success": false,
+  "code": 7000,
+  "reason": "Port already in use"
+}
+```
 
-| Field | Size | Description |
-| --- | --- | --- |
-| Forward ID | 4 bytes | Forward identifier |
-| Actual Port | 2 bytes | Actual bound port (if 0 was requested) |
+### FORWARD_CONNECTION (0x04)
 
-**Failure Payload**:
+Sent when a new TCP connection arrives on a forwarded port. The sender also opens a new OpenMux channel for the connection data.
 
-| Field | Size | Description |
-| --- | --- | --- |
-| Forward ID | 4 bytes | Forward identifier |
-| Error Code | 2 bytes | Error code |
-| Message Length | 1 byte | Length of message |
-| Message | variable | Error description |
+**Payload** (JSON):
+```json
+{
+  "forwardId": 1,
+  "channelName": "fwd-1-conn-1",
+  "sourceAddress": "127.0.0.1",
+  "sourcePort": 54321
+}
+```
 
-### FORWARD_CANCEL (0x92)
-
-**Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Forward ID | 4 bytes | Forward to cancel |
-
-### FORWARD_OPEN (0x93)
-
-Sent when a new connection arrives on a forwarded port.
-
-**Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Forward ID | 4 bytes | Associated forward |
-| Channel ID | 2 bytes | Channel for this connection |
-| Source Address Length | 1 byte | Length of source address |
-| Source Address | variable | Connecting client's address |
-| Source Port | 2 bytes | Connecting client's port |
-
-### FORWARD_OPEN_ACK (0x94)
-
-**Flags**:
-- Bit 0: `1` = Accept, `0` = Reject
-
-**Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Channel ID | 2 bytes | Channel ID from FORWARD_OPEN |
+The sender simultaneously sends an `OPEN_CHANNEL` on channel 0 with name matching `channelName`. The receiver correlates them.
 
 ## Local Forward Flow
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteBkgColor': '#909090', 'noteTextColor': '#000000', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'actorLineColor': '#404040', 'signalColor': '#404040'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 sequenceDiagram
     participant A as Local App
-    participant C as SocketPipe Client
-    participant S as SocketPipe Server
+    participant C as Client
+    participant S as Server
     participant D as db.internal:5432
 
-    Note over C,S: Setup local forward
-    C->>S: FORWARD_REQUEST (local, bind=8080, target=db:5432)
-    S-->>C: FORWARD_RESPONSE (success)
-    
-    Note over A,C: Client listens on localhost:8080
-    
+    Note over C,S: Setup: on port-forward-ctl channel
+    C->>S: FORWARD_REQUEST {direction: "local", bind: 8080, target: db:5432}
+    S->>C: FORWARD_RESPONSE {success: true}
+    Note over C: Client listens on localhost:8080
+
     Note over A,D: App connects to localhost:8080
     A->>C: TCP connect localhost:8080
-    C->>S: FORWARD_OPEN (fwd_id, ch=5, src=127.0.0.1:54321)
+    Note over C,S: Client opens a new channel for this connection
+    C->>S: OPEN_CHANNEL {name: "fwd-1-conn-1"} (on ch 0)
+    C->>S: FORWARD_CONNECTION {forwardId: 1, channelName: "fwd-1-conn-1"} (on ctl ch)
     S->>D: TCP connect db.internal:5432
-    D-->>S: Connected
-    S-->>C: FORWARD_OPEN_ACK (ch=5, accept)
-    
-    Note over A,D: Data flows through tunnel
+    S->>C: CHANNEL_ACK {id: 5} (on ch 0)
+
+    Note over A,D: Data flows on channel 5
     A->>C: SQL query
     C->>S: DATA (ch=5)
-    S->>D: Forward
-    D-->>S: Response
-    S-->>C: DATA (ch=5)
-    C-->>A: Response
+    S->>D: TCP forward
+    D->>S: Response
+    S->>C: DATA (ch=5)
+    C->>A: Response
 ```
 
 ## Remote Forward Flow
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteBkgColor': '#909090', 'noteTextColor': '#000000', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'actorLineColor': '#404040', 'signalColor': '#404040'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 sequenceDiagram
     participant D as Dev Server :3000
-    participant C as SocketPipe Client
-    participant S as SocketPipe Server
+    participant C as Client
+    participant S as Server
     participant R as Remote User
 
-    Note over C,S: Setup remote forward
-    C->>S: FORWARD_REQUEST (remote, bind=9000, target=localhost:3000)
-    S-->>C: FORWARD_RESPONSE (success, port=9000)
-    
+    Note over C,S: Setup: on port-forward-ctl channel
+    C->>S: FORWARD_REQUEST {direction: "remote", bind: 9000, target: localhost:3000}
+    S->>C: FORWARD_RESPONSE {success: true, actualPort: 9000}
     Note over S: Server listens on server:9000
-    
+
     Note over R,D: Remote user connects to server:9000
     R->>S: TCP connect server:9000
-    S->>C: FORWARD_OPEN (fwd_id, ch=6, src=203.0.113.5:45678)
+    Note over C,S: Server opens a new channel for this connection
+    S->>C: OPEN_CHANNEL {name: "fwd-1-conn-1"} (on ch 0)
+    S->>C: FORWARD_CONNECTION {forwardId: 1, channelName: "fwd-1-conn-1"} (on ctl ch)
     C->>D: TCP connect localhost:3000
-    D-->>C: Connected
-    C-->>S: FORWARD_OPEN_ACK (ch=6, accept)
-    
-    Note over R,D: Data flows through tunnel
+    C->>S: CHANNEL_ACK {id: 6} (on ch 0)
+
+    Note over R,D: Data flows on channel 6
     R->>S: HTTP request
     S->>C: DATA (ch=6)
     C->>D: Forward
-    D-->>C: Response
-    C-->>S: DATA (ch=6)
-    S-->>R: Response
-```
-
-## Forward Lifecycle
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'primaryColor': '#808080', 'secondaryColor': '#909090', 'tertiaryColor': '#707070', 'stateLabelColor': '#000000', 'compositeBackground': '#a0a0a0', 'lineColor': '#404040'}}}%%
-stateDiagram-v2
-    [*] --> REQUESTING: FORWARD_REQUEST
-    REQUESTING --> ACTIVE: FORWARD_RESPONSE (success)
-    REQUESTING --> FAILED: FORWARD_RESPONSE (failure)
-    ACTIVE --> CANCELLED: FORWARD_CANCEL
-    ACTIVE --> CLOSED: Connection close
-    CANCELLED --> [*]
-    FAILED --> [*]
-    CLOSED --> [*]
+    D->>C: Response
+    C->>S: DATA (ch=6)
+    S->>R: Response
 ```
 
 ## Error Codes
 
 | Code | Name | Description |
-| --- | --- | --- |
+|------|------|-------------|
 | 7000 | PORT_IN_USE | Requested port already bound |
 | 7001 | PERMISSION_DENIED | Cannot bind to port (e.g., < 1024) |
 | 7002 | FORWARD_LIMIT | Maximum forwards exceeded |
@@ -213,17 +212,9 @@ stateDiagram-v2
 | 7004 | FORWARD_DISABLED | Port forwarding not allowed by policy |
 | 7005 | INVALID_ADDRESS | Invalid bind or target address |
 
-## Server Requirements
-
-- MUST support at least 10 concurrent forwards
-- MUST enforce bind address restrictions (e.g., localhost only)
-- SHOULD support dynamic port allocation (bind port 0)
-- MAY restrict forwarding based on authentication
-
 ## Security Considerations
 
 - Remote forwards expose server ports; restrict by default
 - Servers SHOULD only allow localhost binds unless explicitly configured
 - Consider rate limiting new connections per forward
 - Audit logging recommended for all forward requests
-- GatewayPorts equivalent: binding to 0.0.0.0 vs localhost

@@ -1,12 +1,12 @@
-# SocketPipe Extension: File Transfer
+# OpenMux Extension: File Transfer
 
-**Status**: Draft  
-**Extension ID**: `file-transfer`  
-**Depends on**: Core Protocol v1.0
+**Status**: Draft
+**Extension ID**: `file-transfer`
+**Depends on**: OpenMux 0.1.0+
 
 ## Overview
 
-File Transfer enables SCP/SFTP-like file operations over SocketPipe connections. Files can be transferred without interrupting the terminal session.
+File Transfer enables SCP/SFTP-like file operations over an OpenMux connection. Files are transferred on a dedicated channel without interrupting other channels (e.g., terminal sessions).
 
 ## Use Cases
 
@@ -17,221 +17,220 @@ File Transfer enables SCP/SFTP-like file operations over SocketPipe connections.
 
 ## Architecture
 
+File transfer uses OpenMux's native channel multiplexing. A dedicated reliable, ordered channel is opened for file operations, running alongside any other application channels.
+
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 graph TB
-    subgraph "Client"
-        UI[Terminal UI]
-        FT[File Transfer UI]
+    subgraph "OpenMux Connection"
+        CH0["Channel 0<br/>Control"]
+        CH1["Channel 1<br/>Terminal (TermPipe)"]
+        CH2["Channel 2<br/>File Transfer"]
     end
-    
-    subgraph "SocketPipe Connection"
-        PTY[PTY Channel]
-        FILE[File Channel]
-    end
-    
+
     subgraph "Server"
-        SHELL[Shell Session]
-        SFTP[SFTP Subsystem]
+        SHELL["Shell / PTY"]
+        FS["Filesystem"]
     end
-    
-    UI --> PTY
-    FT --> FILE
-    PTY --> SHELL
-    FILE --> SFTP
+
+    CH1 --> SHELL
+    CH2 --> FS
 ```
 
-## Protocol Changes
+## Channel Setup
 
-### Capability Negotiation
-
-**Flags** (byte 1 of header):
-- Bit 4: `1` = File Transfer supported
-
-### New Message Types
-
-| Type | Name | Direction | Description |
-| --- | --- | --- | --- |
-| `0x80` | FILE_OPEN | C→S | Open file for read/write |
-| `0x81` | FILE_OPEN_ACK | S→C | File opened, handle assigned |
-| `0x82` | FILE_READ | C→S | Read from file |
-| `0x83` | FILE_READ_RESPONSE | S→C | File data |
-| `0x84` | FILE_WRITE | C→S | Write to file |
-| `0x85` | FILE_WRITE_ACK | S→C | Write confirmed |
-| `0x86` | FILE_CLOSE | C→S | Close file handle |
-| `0x87` | FILE_CLOSE_ACK | S→C | File closed |
-| `0x88` | FILE_LIST | C→S | List directory |
-| `0x89` | FILE_LIST_RESPONSE | S→C | Directory listing |
-| `0x8A` | FILE_STAT | C→S | Get file info |
-| `0x8B` | FILE_STAT_RESPONSE | S→C | File metadata |
-| `0x8C` | FILE_MKDIR | C→S | Create directory |
-| `0x8D` | FILE_REMOVE | C→S | Delete file/directory |
-| `0x8E` | FILE_RENAME | C→S | Rename/move file |
-| `0x8F` | FILE_ACK | S→C | Generic success acknowledgment |
-
-### FILE_OPEN (0x80)
-
-**Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Flags | 1 byte | Open mode flags |
-| Path Length | 2 bytes | Length of path |
-| Path | variable | File path (UTF-8) |
-
-**Flags**:
-- Bit 0: Read
-- Bit 1: Write
-- Bit 2: Create
-- Bit 3: Truncate
-- Bit 4: Append
-- Bit 5: Exclusive (fail if exists)
-
-### FILE_OPEN_ACK (0x81)
-
-**Flags**:
-- Bit 0: `1` = Success, `0` = Failure
-
-**Success Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Handle | 4 bytes | File handle for subsequent operations |
-| File Size | 8 bytes | Size in bytes (-1 if unknown/stream) |
-
-**Failure Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Error Code | 2 bytes | Error code |
-| Message Length | 1 byte | Length of message |
-| Message | variable | Error description |
-
-### FILE_READ (0x82)
-
-**Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Handle | 4 bytes | File handle |
-| Offset | 8 bytes | Byte offset to read from |
-| Length | 4 bytes | Bytes to read (max 64KB) |
-
-### FILE_READ_RESPONSE (0x83)
-
-**Flags**:
-- Bit 0: `1` = Success, `0` = Failure
-- Bit 1: `1` = EOF reached
-
-**Success Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Handle | 4 bytes | File handle |
-| Data Length | 4 bytes | Actual bytes returned |
-| Data | variable | File data |
-
-### FILE_WRITE (0x84)
-
-**Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Handle | 4 bytes | File handle |
-| Offset | 8 bytes | Byte offset to write at |
-| Data Length | 4 bytes | Bytes to write |
-| Data | variable | Data to write |
-
-### FILE_WRITE_ACK (0x85)
-
-**Flags**:
-- Bit 0: `1` = Success, `0` = Failure
-
-**Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Handle | 4 bytes | File handle |
-| Bytes Written | 4 bytes | Actual bytes written |
-
-### FILE_LIST (0x88)
-
-**Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Path Length | 2 bytes | Length of path |
-| Path | variable | Directory path (UTF-8) |
-
-### FILE_LIST_RESPONSE (0x89)
-
-**Payload**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Entry Count | 2 bytes | Number of entries |
-| Entries | variable | Array of file entries |
-
-**File Entry**:
-
-| Field | Size | Description |
-| --- | --- | --- |
-| Name Length | 2 bytes | Length of filename |
-| Name | variable | Filename (UTF-8) |
-| Type | 1 byte | 0=file, 1=dir, 2=symlink |
-| Size | 8 bytes | Size in bytes |
-| Modified | 8 bytes | Unix timestamp |
-| Permissions | 4 bytes | Unix permissions |
-
-## Upload Flow
+File transfer uses a dynamically opened channel:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteBkgColor': '#909090', 'noteTextColor': '#000000', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'actorLineColor': '#404040', 'signalColor': '#404040'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
 
-    C->>S: FILE_OPEN (write|create, "/tmp/upload.txt")
-    S-->>C: FILE_OPEN_ACK (handle=1)
-    
-    C->>S: FILE_WRITE (handle=1, offset=0, 64KB)
-    S-->>C: FILE_WRITE_ACK (64KB written)
-    
-    C->>S: FILE_WRITE (handle=1, offset=64KB, 32KB)
-    S-->>C: FILE_WRITE_ACK (32KB written)
-    
-    C->>S: FILE_CLOSE (handle=1)
-    S-->>C: FILE_CLOSE_ACK
+    C->>S: OPEN_CHANNEL {name: "file-transfer", reliable: true, ordered: true}
+    S->>C: CHANNEL_ACK {id: 2}
+    Note over C,S: Channel 2 now carries file operations
+```
+
+Alternatively, the file-transfer channel can be requested in the initial HELLO `channels` array.
+
+## Application Messages (on file-transfer channel)
+
+All messages below are sent on the assigned file-transfer channel (not channel 0). Message types are scoped to this channel.
+
+| Type | Name | Direction | Description |
+|------|------|-----------|-------------|
+| `0x01` | FILE_OPEN | C→S | Open file for read/write |
+| `0x02` | FILE_OPEN_ACK | S→C | File opened, handle assigned |
+| `0x03` | FILE_READ | C→S | Read from file |
+| `0x04` | FILE_READ_RESPONSE | S→C | File data |
+| `0x05` | FILE_WRITE | C→S | Write to file |
+| `0x06` | FILE_WRITE_ACK | S→C | Write confirmed |
+| `0x07` | FILE_CLOSE | C→S | Close file handle |
+| `0x08` | FILE_CLOSE_ACK | S→C | File closed |
+| `0x09` | FILE_LIST | C→S | List directory |
+| `0x0A` | FILE_LIST_RESPONSE | S→C | Directory listing |
+| `0x0B` | FILE_STAT | C→S | Get file info |
+| `0x0C` | FILE_STAT_RESPONSE | S→C | File metadata |
+| `0x0D` | FILE_MKDIR | C→S | Create directory |
+| `0x0E` | FILE_REMOVE | C→S | Delete file/directory |
+| `0x0F` | FILE_RENAME | C→S | Rename/move file |
+| `0x10` | FILE_ERROR | S→C | File operation error |
+
+> **Note**: Type numbers are scoped to the file-transfer channel. Type `0x01` on this channel means FILE_OPEN, not HELLO. This is how OpenMux works — message types are channel-scoped.
+
+### FILE_OPEN (0x01)
+
+**Payload** (JSON):
+```json
+{
+  "path": "/tmp/upload.txt",
+  "mode": "write",
+  "flags": ["create", "truncate"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `path` | string | MUST | File path (UTF-8) |
+| `mode` | string | MUST | `"read"` or `"write"` |
+| `flags` | string[] | MAY | `"create"`, `"truncate"`, `"append"`, `"exclusive"` |
+
+### FILE_OPEN_ACK (0x02)
+
+**Payload** (JSON):
+```json
+{
+  "handle": 1,
+  "size": 150000
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `handle` | number | File handle for subsequent operations |
+| `size` | number | File size in bytes (-1 if unknown) |
+
+### FILE_READ (0x03)
+
+**Payload** (binary):
+
+```
+[Handle:4][Offset:8][Length:4]
+```
+
+All fields big-endian. Max read length: negotiated max message size.
+
+### FILE_READ_RESPONSE (0x04)
+
+**Flags** (in frame header):
+- Bit 0 in Flags byte: `1` = EOF reached
+
+**Payload** (binary):
+```
+[Handle:4][Data:variable]
+```
+
+### FILE_WRITE (0x05)
+
+**Payload** (binary):
+```
+[Handle:4][Offset:8][Data:variable]
+```
+
+### FILE_WRITE_ACK (0x06)
+
+**Payload** (JSON):
+```json
+{
+  "handle": 1,
+  "bytesWritten": 65536
+}
+```
+
+### FILE_LIST (0x09)
+
+**Payload** (JSON):
+```json
+{
+  "path": "/var/log"
+}
+```
+
+### FILE_LIST_RESPONSE (0x0A)
+
+**Payload** (JSON):
+```json
+{
+  "entries": [
+    {"name": "app.log", "type": "file", "size": 150000, "modified": 1707500000, "permissions": 644},
+    {"name": "archive", "type": "dir", "size": 0, "modified": 1707400000, "permissions": 755}
+  ]
+}
+```
+
+### FILE_ERROR (0x10)
+
+**Payload** (JSON):
+```json
+{
+  "handle": 1,
+  "code": 6000,
+  "reason": "File not found"
+}
+```
+
+## Upload Flow
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    Note over C,S: On file-transfer channel (e.g., ch=2)
+    C->>S: FILE_OPEN {path: "/tmp/upload.txt", mode: "write", flags: ["create"]}
+    S->>C: FILE_OPEN_ACK {handle: 1}
+
+    C->>S: FILE_WRITE [handle=1, offset=0, 64KB data]
+    S->>C: FILE_WRITE_ACK {handle: 1, bytesWritten: 65536}
+
+    C->>S: FILE_WRITE [handle=1, offset=64KB, 32KB data]
+    S->>C: FILE_WRITE_ACK {handle: 1, bytesWritten: 32768}
+
+    C->>S: FILE_CLOSE {handle: 1}
+    S->>C: FILE_CLOSE_ACK
 ```
 
 ## Download Flow
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteBkgColor': '#909090', 'noteTextColor': '#000000', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'actorLineColor': '#404040', 'signalColor': '#404040'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
 
-    C->>S: FILE_OPEN (read, "/var/log/app.log")
-    S-->>C: FILE_OPEN_ACK (handle=2, size=150KB)
-    
-    C->>S: FILE_READ (handle=2, offset=0, 64KB)
-    S-->>C: FILE_READ_RESPONSE (64KB)
-    
-    C->>S: FILE_READ (handle=2, offset=64KB, 64KB)
-    S-->>C: FILE_READ_RESPONSE (64KB)
-    
-    C->>S: FILE_READ (handle=2, offset=128KB, 64KB)
-    S-->>C: FILE_READ_RESPONSE (22KB, EOF)
-    
-    C->>S: FILE_CLOSE (handle=2)
-    S-->>C: FILE_CLOSE_ACK
+    Note over C,S: On file-transfer channel (e.g., ch=2)
+    C->>S: FILE_OPEN {path: "/var/log/app.log", mode: "read"}
+    S->>C: FILE_OPEN_ACK {handle: 2, size: 150000}
+
+    C->>S: FILE_READ [handle=2, offset=0, length=64KB]
+    S->>C: FILE_READ_RESPONSE [handle=2, 64KB data]
+
+    C->>S: FILE_READ [handle=2, offset=64KB, length=64KB]
+    S->>C: FILE_READ_RESPONSE [handle=2, 64KB data]
+
+    C->>S: FILE_READ [handle=2, offset=128KB, length=64KB]
+    S->>C: FILE_READ_RESPONSE [handle=2, 22KB data, EOF]
+
+    C->>S: FILE_CLOSE {handle: 2}
+    S->>C: FILE_CLOSE_ACK
 ```
 
 ## Error Codes
 
 | Code | Name | Description |
-| --- | --- | --- |
+|------|------|-------------|
 | 6000 | FILE_NOT_FOUND | File does not exist |
 | 6001 | PERMISSION_DENIED | Insufficient permissions |
 | 6002 | FILE_EXISTS | File exists (exclusive create) |
@@ -240,6 +239,8 @@ sequenceDiagram
 | 6005 | DISK_FULL | No space left on device |
 | 6006 | INVALID_HANDLE | Unknown file handle |
 | 6007 | IO_ERROR | General I/O error |
+
+These use the OpenMux application-defined error code range (4100–4999 for channel-level errors via ERROR messages on channel 0, or file-transfer-specific codes within the channel).
 
 ## Security Considerations
 
