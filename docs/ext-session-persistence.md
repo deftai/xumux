@@ -1,14 +1,14 @@
-# OpenMux Extension: Session Persistence
+# xumux Extension: Session Persistence
 
 **Status**: Draft
 **Extension ID**: `session-persistence`
-**Depends on**: OpenMux 0.1.0+, Session Resume Extension (`session-resume`)
+**Depends on**: xumux 0.1.0+, Session Resume Extension (`session-resume`)
 
 ## Overview
 
 Session Persistence extends Session Resume to support indefinite session survival, similar to `tmux` or `screen`. Sessions continue running on the server even when no client is connected, and clients can reconnect at any time.
 
-This is negotiated as an OpenMux extension in the HELLO/WELCOME handshake. Requesting `session-persistence` implies `session-resume`.
+This is negotiated as an xumux extension in the HELLO/WELCOME handshake. Requesting `session-persistence` implies `session-resume`.
 
 ## Use Cases
 

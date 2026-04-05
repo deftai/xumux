@@ -1,11 +1,11 @@
-# OpenMux on WebSocket
+# xumux on WebSocket
 
 **Status**: Draft
 **Binding ID**: `websocket`
 
 ## Overview
 
-This binding defines how OpenMux operates over a single WebSocket connection. WebSocket serves as the **fallback transport** when WebRTC is unavailable, and as a viable primary transport when low-latency UDP delivery isn't required (e.g., terminal I/O, control-plane-only applications).
+This binding defines how xumux operates over a single WebSocket connection. WebSocket serves as the **fallback transport** when WebRTC is unavailable, and as a viable primary transport when low-latency UDP delivery isn't required (e.g., terminal I/O, control-plane-only applications).
 
 ## Transport Requirements
 
@@ -16,7 +16,7 @@ This binding defines how OpenMux operates over a single WebSocket connection. We
 
 ## Channel Multiplexing
 
-Since WebSocket is a single bidirectional stream, **all OpenMux channels are multiplexed** over that one connection using the Channel byte in the frame header.
+Since WebSocket is a single bidirectional stream, **all xumux channels are multiplexed** over that one connection using the Channel byte in the frame header.
 
 ```
 WebSocket Connection
@@ -26,11 +26,11 @@ WebSocket Connection
 └── Channel N: ...        ─┘
 ```
 
-Each WebSocket binary message MUST contain exactly one complete OpenMux frame. Do not pack multiple frames into one WebSocket message, and do not split one frame across multiple WebSocket messages.
+Each WebSocket binary message MUST contain exactly one complete xumux frame. Do not pack multiple frames into one WebSocket message, and do not split one frame across multiple WebSocket messages.
 
 ## Frame Format
 
-Identical to core OpenMux:
+Identical to core xumux:
 
 ```
 [Channel: 1][Type: 1][Flags: 1][Reserved: 1][Length: 2][Payload: variable]
@@ -59,7 +59,7 @@ Client                              Server
 
 ## Endpoint Convention
 
-Implementations SHOULD expose OpenMux WebSocket endpoints at:
+Implementations SHOULD expose xumux WebSocket endpoints at:
 
 ```
 wss://host/omux
@@ -84,7 +84,7 @@ Applications that depend on unreliable/unordered semantics (e.g., discarding sta
 
 ## Keepalive
 
-OpenMux PING/PONG messages (on channel 0) operate at the application level, independent of WebSocket ping/pong frames. Implementations MAY additionally use WebSocket-level ping/pong for transport-level keepalive.
+xumux PING/PONG messages (on channel 0) operate at the application level, independent of WebSocket ping/pong frames. Implementations MAY additionally use WebSocket-level ping/pong for transport-level keepalive.
 
 ## Head-of-Line Blocking
 

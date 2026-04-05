@@ -1,11 +1,11 @@
-# OpenMux on TCP
+# xumux on TCP
 
 **Status**: Draft
 **Binding ID**: `tcp`
 
 ## Overview
 
-This binding defines how OpenMux operates over a raw TCP connection. TCP is suitable for server-to-server communication, local daemon IPC, and environments where WebSocket/WebRTC overhead is unnecessary.
+This binding defines how xumux operates over a raw TCP connection. TCP is suitable for server-to-server communication, local daemon IPC, and environments where WebSocket/WebRTC overhead is unnecessary.
 
 ## Transport Requirements
 
@@ -15,7 +15,7 @@ This binding defines how OpenMux operates over a raw TCP connection. TCP is suit
 
 ## Stream Framing
 
-Unlike WebSocket (which provides message boundaries) and WebRTC DataChannels (which provide message boundaries via SCTP), TCP is a raw byte stream. OpenMux frames must be parsed from the stream using the Length field.
+Unlike WebSocket (which provides message boundaries) and WebRTC DataChannels (which provide message boundaries via SCTP), TCP is a raw byte stream. xumux frames must be parsed from the stream using the Length field.
 
 ### Reading Frames
 
@@ -76,7 +76,7 @@ Same as WebSocket — TCP guarantees reliable, ordered delivery for all channels
 
 ## Keepalive
 
-OpenMux PING/PONG on channel 0. Implementations MAY additionally use TCP keepalive (`SO_KEEPALIVE`) for transport-level dead connection detection.
+xumux PING/PONG on channel 0. Implementations MAY additionally use TCP keepalive (`SO_KEEPALIVE`) for transport-level dead connection detection.
 
 ## Security
 

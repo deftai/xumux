@@ -1,14 +1,14 @@
-# OpenMux Extension: Session Resume
+# xumux Extension: Session Resume
 
 **Status**: Draft
 **Extension ID**: `session-resume`
-**Depends on**: OpenMux 0.1.0+
+**Depends on**: xumux 0.1.0+
 
 ## Overview
 
-Session Resume enables clients to reconnect to an existing OpenMux session after network disruption without losing state. The server buffers output during disconnection and replays it upon reconnection.
+Session Resume enables clients to reconnect to an existing xumux session after network disruption without losing state. The server buffers output during disconnection and replays it upon reconnection.
 
-This is negotiated as an OpenMux extension in the HELLO/WELCOME handshake.
+This is negotiated as an xumux extension in the HELLO/WELCOME handshake.
 
 ## Use Cases
 

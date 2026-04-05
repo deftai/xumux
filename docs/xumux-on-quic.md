@@ -1,11 +1,11 @@
-# OpenMux on QUIC / WebTransport
+# xumux on QUIC / WebTransport
 
 **Status**: Draft
 **Binding ID**: `quic`
 
 ## Overview
 
-This binding defines how OpenMux operates over QUIC streams, accessed via the **WebTransport** API in browsers or native QUIC libraries server-side. QUIC is the **optimal transport** for OpenMux — it provides UDP-based delivery, native multiplexed streams with independent flow control, built-in TLS 1.3 encryption, 0-RTT connection resumption, and no head-of-line blocking across streams.
+This binding defines how xumux operates over QUIC streams, accessed via the **WebTransport** API in browsers or native QUIC libraries server-side. QUIC is the **optimal transport** for xumux — it provides UDP-based delivery, native multiplexed streams with independent flow control, built-in TLS 1.3 encryption, 0-RTT connection resumption, and no head-of-line blocking across streams.
 
 WebTransport is the browser API that exposes QUIC streams and datagrams to JavaScript. This binding covers both native QUIC (server-to-server, CLI) and WebTransport (browser clients).
 
@@ -88,9 +88,9 @@ graph TB
 
 ### Channel Mapping
 
-QUIC provides two primitives that map perfectly to OpenMux:
+QUIC provides two primitives that map perfectly to xumux:
 
-| OpenMux Channel Property | QUIC Primitive | Mapping |
+| xumux Channel Property | QUIC Primitive | Mapping |
 |--------------------------|---------------|---------|
 | Reliable + Ordered | **Bidirectional Stream** | 1:1 — each channel gets its own QUIC stream |
 | Unreliable + Unordered | **Datagram** | Channel byte in header disambiguates |
@@ -107,13 +107,13 @@ This is cleaner than WebRTC DataChannels because QUIC streams are lightweight (j
 
 **Stream identification:** Before WELCOME is processed, the receiver cannot know which stream corresponds to which channel. Therefore:
 - Stream 0 is **always** the control channel (by convention, like WebRTC's negotiated DataChannel ID 0).
-- All other streams MUST include the correct Channel byte in the OpenMux frame header. The receiver uses the Channel byte to identify the channel, cross-referencing with the `streamId` mappings from WELCOME.
+- All other streams MUST include the correct Channel byte in the xumux frame header. The receiver uses the Channel byte to identify the channel, cross-referencing with the `streamId` mappings from WELCOME.
 - If a frame arrives on an unknown stream with an unknown Channel byte, the receiver MUST send ERROR (code 4003, CHANNEL_NOT_FOUND) on the control stream.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 graph TD
-    subgraph "OpenMux Channel Types"
+    subgraph "xumux Channel Types"
         R["Reliable + Ordered<br/>(control, button, data)"]
         U["Unreliable + Unordered<br/>(pointer, sensor data)"]
     end
@@ -186,7 +186,7 @@ sequenceDiagram
 
 0-RTT is particularly valuable for VROOM — reconnecting after a network glitch resumes the interactive session instantly.
 
-**Security note**: 0-RTT data is replayable. OpenMux HELLO is idempotent, so this is safe. Application protocols MUST NOT send non-idempotent data in 0-RTT.
+**Security note**: 0-RTT data is replayable. xumux HELLO is idempotent, so this is safe. Application protocols MUST NOT send non-idempotent data in 0-RTT.
 
 ## WebTransport API Mapping
 
@@ -203,7 +203,7 @@ const controlWriter = controlStream.writable.getWriter();
 const controlReader = controlStream.readable.getReader();
 
 // Send HELLO on control stream
-controlWriter.write(encodeOpenMuxFrame(0, 0x01, helloPayload));
+controlWriter.write(encodexumuxFrame(0, 0x01, helloPayload));
 
 // Button channel → another bidirectional stream
 const buttonStream = await transport.createBidirectionalStream();
@@ -214,38 +214,38 @@ const datagramWriter = transport.datagrams.writable.getWriter();
 const datagramReader = transport.datagrams.readable.getReader();
 
 // Send mouse move via datagram
-datagramWriter.write(encodeOpenMuxFrame(1, 0x01, mousePayload));
+datagramWriter.write(encodexumuxFrame(1, 0x01, mousePayload));
 
 // Send key press via reliable stream
-buttonWriter.write(encodeOpenMuxFrame(2, 0x12, keyPayload));
+buttonWriter.write(encodexumuxFrame(2, 0x12, keyPayload));
 ```
 
-### WebTransport ↔ OpenMux Mapping
+### WebTransport ↔ xumux Mapping
 
-| WebTransport Concept | OpenMux Concept |
+| WebTransport Concept | xumux Concept |
 |---------------------|-----------------|
 | `createBidirectionalStream()` | Open reliable+ordered channel |
 | `datagrams.writable` | Send on unreliable+unordered channel |
 | `datagrams.readable` | Receive unreliable+unordered messages |
 | Stream close | CLOSE_CHANNEL |
 | `transport.close()` | CLOSE |
-| Session ticket / 0-RTT | Reconnection (no OpenMux equivalent needed) |
+| Session ticket / 0-RTT | Reconnection (no xumux equivalent needed) |
 
 ## Frame Format
 
 ### On Streams (reliable channels)
 
-Same as core OpenMux. Since QUIC streams are byte streams (like TCP), frames must be parsed using the Length field:
+Same as core xumux. Since QUIC streams are byte streams (like TCP), frames must be parsed using the Length field:
 
 ```
 [Channel: 1][Type: 1][Flags: 1][Reserved: 1][Length: 2][Payload: variable]
 ```
 
-Each QUIC stream carries one OpenMux channel. The Channel byte is redundant (the stream identity determines the channel) but MUST be present for cross-transport compatibility.
+Each QUIC stream carries one xumux channel. The Channel byte is redundant (the stream identity determines the channel) but MUST be present for cross-transport compatibility.
 
 **Stream framing note**: Unlike WebSocket/DataChannel (which provide message boundaries), QUIC streams are byte streams. Implementations MUST parse frames by reading the 6-byte header, then reading exactly `Length` bytes of payload — identical to the TCP binding.
 
-However, WebTransport's `readable`/`writable` streams in browsers operate on `Uint8Array` chunks, not raw bytes. Implementations SHOULD write one complete OpenMux frame per `write()` call and handle partial reads on the receive side.
+However, WebTransport's `readable`/`writable` streams in browsers operate on `Uint8Array` chunks, not raw bytes. Implementations SHOULD write one complete xumux frame per `write()` call and handle partial reads on the receive side.
 
 ### On Datagrams (unreliable channels)
 
@@ -256,10 +256,10 @@ QUIC datagrams are self-contained — each datagram is one complete message. The
 - FRAGMENT flags MUST NOT be used (datagrams cannot be reassembled reliably)
 
 ```
-One QUIC datagram = one OpenMux frame = one pointer/sensor event
+One QUIC datagram = one xumux frame = one pointer/sensor event
 ```
 
-Datagram max size depends on the QUIC path MTU. The server advertises `max_datagram_frame_size` during handshake. OpenMux pointer events are 10 bytes total (6 header + 4 payload), well within any MTU.
+Datagram max size depends on the QUIC path MTU. The server advertises `max_datagram_frame_size` during handshake. xumux pointer events are 10 bytes total (6 header + 4 payload), well within any MTU.
 
 ## Channel-to-Stream Assignment
 
@@ -288,7 +288,7 @@ The WELCOME message in the QUIC binding adds two optional fields to each channel
 | `streamId` | number | QUIC stream ID for this channel (reliable channels) |
 | `transport` | `"stream"` \| `"datagram"` | Which QUIC primitive. Default: `"stream"` |
 
-Channels with `"transport": "datagram"` share the datagram pipe and are disambiguated by the Channel byte in the OpenMux header.
+Channels with `"transport": "datagram"` share the datagram pipe and are disambiguated by the Channel byte in the xumux header.
 
 ## Dynamic Channels
 
@@ -311,11 +311,11 @@ sequenceDiagram
     Note over C,S: Stream freed, channel ID freed
 ```
 
-QUIC streams are cheap — creating one is just sending a frame with a new stream ID. No round-trip negotiation at the transport level. The OPEN_CHANNEL/CHANNEL_ACK round-trip is purely at the OpenMux level for both sides to agree on the channel semantics.
+QUIC streams are cheap — creating one is just sending a frame with a new stream ID. No round-trip negotiation at the transport level. The OPEN_CHANNEL/CHANNEL_ACK round-trip is purely at the xumux level for both sides to agree on the channel semantics.
 
 ## Connection Migration
 
-QUIC supports connection migration — if the client's IP address changes (e.g., switching from WiFi to cellular), the QUIC connection survives. This is transparent to OpenMux.
+QUIC supports connection migration — if the client's IP address changes (e.g., switching from WiFi to cellular), the QUIC connection survives. This is transparent to xumux.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
@@ -356,7 +356,7 @@ WebTransport requires a valid TLS certificate (self-signed certificates can be a
 - MUST support bidirectional streams
 - SHOULD support datagrams (for unreliable channels)
 - If datagrams are not supported, unreliable channels fall back to streams (with a warning that ordering/reliability semantics change)
-- MUST advertise supported OpenMux channels in WELCOME with stream/datagram assignments
+- MUST advertise supported xumux channels in WELCOME with stream/datagram assignments
 
 ## Client Requirements
 
@@ -410,7 +410,7 @@ graph LR
         R5["5. DTLS handshake"]
         R6["6. SCTP association"]
         R7["7. DataChannel open"]
-        R8["8. OpenMux HELLO"]
+        R8["8. xumux HELLO"]
         R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8
     end
 
@@ -419,7 +419,7 @@ graph LR
         Q1["1. QUIC ClientHello"]
         Q2["2. TLS 1.3 done"]
         Q3["3. Stream 0 open"]
-        Q4["4. OpenMux HELLO"]
+        Q4["4. xumux HELLO"]
         Q1 --> Q2 --> Q3 --> Q4
     end
 ```
@@ -433,4 +433,4 @@ graph LR
 | Max concurrent streams | ~65535 DataChannels | ~2^62 streams |
 | Datagram support | maxRetransmits=0 (hack) | Native QUIC datagrams |
 
-**Bottom line**: QUIC is strictly superior. WebRTC remains the pragmatic choice today for browser reach. The OpenMux abstraction means applications don't need to change when migrating between them.
+**Bottom line**: QUIC is strictly superior. WebRTC remains the pragmatic choice today for browser reach. The xumux abstraction means applications don't need to change when migrating between them.

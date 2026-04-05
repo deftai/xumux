@@ -1,12 +1,12 @@
-# OpenMux Extension: File Transfer
+# xumux Extension: File Transfer
 
 **Status**: Draft
 **Extension ID**: `file-transfer`
-**Depends on**: OpenMux 0.1.0+
+**Depends on**: xumux 0.1.0+
 
 ## Overview
 
-File Transfer enables SCP/SFTP-like file operations over an OpenMux connection. Files are transferred on a dedicated channel without interrupting other channels (e.g., terminal sessions).
+File Transfer enables SCP/SFTP-like file operations over an xumux connection. Files are transferred on a dedicated channel without interrupting other channels (e.g., terminal sessions).
 
 ## Use Cases
 
@@ -17,12 +17,12 @@ File Transfer enables SCP/SFTP-like file operations over an OpenMux connection. 
 
 ## Architecture
 
-File transfer uses OpenMux's native channel multiplexing. A dedicated reliable, ordered channel is opened for file operations, running alongside any other application channels.
+File transfer uses xumux's native channel multiplexing. A dedicated reliable, ordered channel is opened for file operations, running alongside any other application channels.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 graph TB
-    subgraph "OpenMux Connection"
+    subgraph "xumux Connection"
         CH0["Channel 0<br/>Control"]
         CH1["Channel 1<br/>Terminal (TermPipe)"]
         CH2["Channel 2<br/>File Transfer"]
@@ -77,7 +77,7 @@ All messages below are sent on the assigned file-transfer channel (not channel 0
 | `0x0F` | FILE_RENAME | C→S | Rename/move file |
 | `0x10` | FILE_ERROR | S→C | File operation error |
 
-> **Note**: Type numbers are scoped to the file-transfer channel. Type `0x01` on this channel means FILE_OPEN, not HELLO. This is how OpenMux works — message types are channel-scoped.
+> **Note**: Type numbers are scoped to the file-transfer channel. Type `0x01` on this channel means FILE_OPEN, not HELLO. This is how xumux works — message types are channel-scoped.
 
 ### FILE_OPEN (0x01)
 
@@ -240,7 +240,7 @@ sequenceDiagram
 | 6006 | INVALID_HANDLE | Unknown file handle |
 | 6007 | IO_ERROR | General I/O error |
 
-These use the OpenMux application-defined error code range (4100–4999 for channel-level errors via ERROR messages on channel 0, or file-transfer-specific codes within the channel).
+These use the xumux application-defined error code range (4100–4999 for channel-level errors via ERROR messages on channel 0, or file-transfer-specific codes within the channel).
 
 ## Security Considerations
 

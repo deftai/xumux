@@ -1,4 +1,4 @@
-# OpenMux
+# xumux
 
 **Transport-agnostic channel multiplexing protocol**
 
@@ -6,9 +6,9 @@ Version: 0.1.0-draft | Status: Draft | Date: 2026-02-14
 
 ---
 
-## What is OpenMux?
+## What is xumux?
 
-OpenMux is an open protocol for multiplexing typed, named channels over any reliable or semi-reliable transport. It provides a standard binary framing format, channel lifecycle management, and handshake procedure that works identically whether the underlying transport is a WebRTC DataChannel, a WebSocket, a TCP socket, or a Unix pipe.
+xumux is an open protocol for multiplexing typed, named channels over any reliable or semi-reliable transport. It provides a standard binary framing format, channel lifecycle management, and handshake procedure that works identically whether the underlying transport is a WebRTC DataChannel, a WebSocket, a TCP socket, or a Unix pipe.
 
 Think of it as **a universal way to run multiple logical channels over a single connection** — with each channel having its own reliability and ordering guarantees.
 
@@ -21,7 +21,7 @@ graph TB
         A3["Your Protocol<br/>(anything)"]
     end
 
-    subgraph "OpenMux Layer"
+    subgraph "xumux Layer"
         OM["Framing · Channels · Handshake · Keepalive"]
     end
 
@@ -47,12 +47,12 @@ graph TB
 - **Minimal overhead**: 6-byte header for the common case, extensible when needed
 - **Channel-native**: First-class support for named, typed channels with independent reliability
 - **Simple to implement**: Any language, any platform, in an afternoon
-- **Composable**: Application protocols build on top — OpenMux doesn't define what you send, just how you multiplex it
+- **Composable**: Application protocols build on top — xumux doesn't define what you send, just how you multiplex it
 
 ## Non-Goals
 
 - Defining application-level message semantics (that's your protocol's job)
-- Transport negotiation (the transport is already established when OpenMux starts)
+- Transport negotiation (the transport is already established when xumux starts)
 - Encryption (the transport provides this — DTLS for WebRTC, TLS for WebSocket/TCP)
 
 ---
@@ -61,13 +61,13 @@ graph TB
 
 ### Magic Number
 
-On stream-oriented transports (TCP, stdio) where there is no protocol negotiation at the transport level, implementations MUST send 4 magic bytes before the first OpenMux frame:
+On stream-oriented transports (TCP, stdio) where there is no protocol negotiation at the transport level, implementations MUST send 4 magic bytes before the first xumux frame:
 
 ```
 0x4F 0x4D 0x55 0x58  ("OMUX")
 ```
 
-The receiver MUST validate these 4 bytes. If they don't match, the connection MUST be closed immediately — the remote side does not speak OpenMux.
+The receiver MUST validate these 4 bytes. If they don't match, the connection MUST be closed immediately — the remote side does not speak xumux.
 
 On message-oriented transports (WebSocket, WebRTC DataChannel) where protocol identification happens at the transport level (e.g., WebSocket subprotocol header, DataChannel protocol field), the magic number MUST NOT be sent.
 
@@ -75,7 +75,7 @@ On QUIC/WebTransport, the magic number MUST NOT be sent (protocol is identified 
 
 ### Frame Format
 
-All OpenMux messages use a 6-byte header followed by an optional payload:
+All xumux messages use a 6-byte header followed by an optional payload:
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'primaryColor': '#909090'}}}%%
@@ -153,7 +153,7 @@ All fragments MUST have the same Channel, Type, and be delivered in order on tha
 
 ### Channel 0x00: Control Channel
 
-Channel 0 is **always** the control channel. It is implicitly open — never needs OPEN_CHANNEL. It carries all OpenMux protocol messages.
+Channel 0 is **always** the control channel. It is implicitly open — never needs OPEN_CHANNEL. It carries all xumux protocol messages.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'primaryColor': '#4a90d9', 'lineColor': '#333'}}}%%
@@ -606,7 +606,7 @@ Errors are informational — they do NOT close the connection or channel unless 
 
 ### Error Codes
 
-Codes 1000-1003 are intentionally aligned with [WebSocket close codes (RFC 6455)](https://www.rfc-editor.org/rfc/rfc6455#section-7.4.1) for consistency. When closing a WebSocket transport, implementations SHOULD send an OpenMux CLOSE first, then close the WebSocket with code 1000 (normal). The OpenMux close code carries the application-level reason; the WebSocket close code is always 1000 (or 1001 for going away).
+Codes 1000-1003 are intentionally aligned with [WebSocket close codes (RFC 6455)](https://www.rfc-editor.org/rfc/rfc6455#section-7.4.1) for consistency. When closing a WebSocket transport, implementations SHOULD send an xumux CLOSE first, then close the WebSocket with code 1000 (normal). The xumux close code carries the application-level reason; the WebSocket close code is always 1000 (or 1001 for going away).
 
 | Code | Name | Description |
 |------|------|-------------|
@@ -678,7 +678,7 @@ graph TB
         DC1["omux/control<br/>(DataChannel)"]
         DC2["omux/pointer<br/>(DataChannel)"]
         DC3["omux/button<br/>(DataChannel)"]
-        Note1["1:1 mapping<br/>Each OpenMux channel = one DataChannel<br/>Native reliability per channel"]
+        Note1["1:1 mapping<br/>Each xumux channel = one DataChannel<br/>Native reliability per channel"]
     end
 
     subgraph "WebSocket / TCP / stdio"
@@ -689,7 +689,7 @@ graph TB
     end
 ```
 
-When the transport natively supports multiple channels (WebRTC DataChannels), OpenMux channels MAY map 1:1 to transport channels. Each DataChannel is labeled `omux/<channel-name>`. The Channel byte in the frame header is redundant but MUST still be present for format consistency and gateway bridging.
+When the transport natively supports multiple channels (WebRTC DataChannels), xumux channels MAY map 1:1 to transport channels. Each DataChannel is labeled `omux/<channel-name>`. The Channel byte in the frame header is redundant but MUST still be present for format consistency and gateway bridging.
 
 When the transport is a single stream (WebSocket, TCP, stdio), all channels are multiplexed over that stream using the Channel byte.
 
@@ -699,19 +699,19 @@ When the transport is a single stream (WebSocket, TCP, stdio), all channels are 
 
 | Transport | Specification | Primary/Fallback |
 |-----------|---------------|-----------------|
-| QUIC / WebTransport | [openmux-on-quic.md](docs/openmux-on-quic.md) | **Optimal** (when available) |
-| WebRTC DataChannel | [openmux-on-webrtc.md](docs/openmux-on-webrtc.md) | **Primary** (universal browser support) |
-| WebSocket | [openmux-on-websocket.md](docs/openmux-on-websocket.md) | Fallback |
-| TCP | [openmux-on-tcp.md](docs/openmux-on-tcp.md) | Server-to-server |
-| stdio | [openmux-on-stdio.md](docs/openmux-on-stdio.md) | Process IPC |
+| QUIC / WebTransport | [xumux-on-quic.md](docs/xumux-on-quic.md) | **Optimal** (when available) |
+| WebRTC DataChannel | [xumux-on-webrtc.md](docs/xumux-on-webrtc.md) | **Primary** (universal browser support) |
+| WebSocket | [xumux-on-websocket.md](docs/xumux-on-websocket.md) | Fallback |
+| TCP | [xumux-on-tcp.md](docs/xumux-on-tcp.md) | Server-to-server |
+| stdio | [xumux-on-stdio.md](docs/xumux-on-stdio.md) | Process IPC |
 
 ## Application Protocols
 
-OpenMux is a multiplexing layer. Application protocols define what flows over the channels:
+xumux is a multiplexing layer. Application protocols define what flows over the channels:
 
 | Protocol | Description | Repository |
 |----------|-------------|------------|
-| **VROOM** | Virtual Remoting Over OpenMux — WebRTC video/audio + interactive browser control for AI agents | [github.com/visionik/vroom](https://github.com/visionik/vroom) |
+| **VROOM** | Virtual Remoting Over xumux — WebRTC video/audio + interactive browser control for AI agents | [github.com/visionik/vroom](https://github.com/visionik/vroom) |
 | **TermPipe** | Terminal I/O transport (tunnel + PTY modes) — successor to SocketPipe | (this repo, `docs/app-termpipe.md`) |
 
 ## Test Vectors
@@ -789,7 +789,7 @@ Full frame hex:
 O  M  U  X
 ```
 
-Sent once, before the first frame. Not an OpenMux frame — just 4 raw bytes.
+Sent once, before the first frame. Not an xumux frame — just 4 raw bytes.
 
 ---
 
@@ -797,7 +797,7 @@ Sent once, before the first frame. Not an OpenMux frame — just 4 raw bytes.
 
 ### Minimal Implementation
 
-A minimal OpenMux implementation MUST support:
+A minimal xumux implementation MUST support:
 
 - Channel 0 (control) only — no application channels
 - HELLO / WELCOME (handshake)
@@ -815,7 +815,7 @@ A minimal implementation MAY omit:
 
 ### Full Implementation
 
-A full OpenMux implementation MUST support everything in minimal, plus:
+A full xumux implementation MUST support everything in minimal, plus:
 
 - Dynamic channels (OPEN_CHANNEL / CHANNEL_ACK / CHANNEL_REJECT / CLOSE_CHANNEL)
 - PING / PONG with RTT measurement
@@ -830,7 +830,7 @@ A full OpenMux implementation MUST support everything in minimal, plus:
 
 ## Prior Art
 
-OpenMux evolved from [SocketPipe](https://github.com/visionik/socketpipe), originally designed for terminal I/O over WebSocket. The core framing and protocol concepts were generalized into a transport-agnostic multiplexing layer.
+xumux evolved from [SocketPipe](https://github.com/visionik/socketpipe), originally designed for terminal I/O over WebSocket. The core framing and protocol concepts were generalized into a transport-agnostic multiplexing layer.
 
 Related projects studied during design:
 - **n.eko** — JSON over WebSocket for remote desktop control

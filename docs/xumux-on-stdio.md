@@ -1,17 +1,17 @@
-# OpenMux on stdio
+# xumux on stdio
 
 **Status**: Draft
 **Binding ID**: `stdio`
 
 ## Overview
 
-This binding defines how OpenMux operates over standard input/output (stdin/stdout). This enables OpenMux between a parent process and a child process, CLI tool piping, and integration with process supervisors.
+This binding defines how xumux operates over standard input/output (stdin/stdout). This enables xumux between a parent process and a child process, CLI tool piping, and integration with process supervisors.
 
 ## Transport Requirements
 
 - stdin (fd 0) for reading, stdout (fd 1) for writing
 - MUST use binary mode (no line buffering, no newline translation)
-- stderr (fd 2) is NOT part of the OpenMux transport — reserved for diagnostics/logging
+- stderr (fd 2) is NOT part of the xumux transport — reserved for diagnostics/logging
 
 ## Stream Framing
 
@@ -55,10 +55,10 @@ Parent                              Child
 
 ## Use Cases
 
-- **Process-to-process IPC**: Parent spawns child, communicates over OpenMux
-- **CLI piping**: `producer | consumer` where both speak OpenMux
+- **Process-to-process IPC**: Parent spawns child, communicates over xumux
+- **CLI piping**: `producer | consumer` where both speak xumux
 - **MCP-style tool integration**: Language model ↔ tool server over stdio
-- **SSH tunneling**: `ssh host omux-server` — OpenMux frames over SSH channel
+- **SSH tunneling**: `ssh host omux-server` — xumux frames over SSH channel
 
 ## Buffering
 
@@ -71,7 +71,7 @@ Implementations MUST disable or flush buffering on stdout to avoid latency:
 
 ## Keepalive
 
-OpenMux PING/PONG on channel 0. Additionally, implementations SHOULD monitor the child process for unexpected exit (SIGCHLD, waitpid) and treat it as a connection close.
+xumux PING/PONG on channel 0. Additionally, implementations SHOULD monitor the child process for unexpected exit (SIGCHLD, waitpid) and treat it as a connection close.
 
 ## EOF Handling
 

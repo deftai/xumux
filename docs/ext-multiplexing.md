@@ -2,8 +2,8 @@
 
 > **⚠️ This document is deprecated and should not be used.**
 >
-> Multiplexing is a **core feature of OpenMux** and no longer needs a separate extension document.
-> OpenMux provides native channel multiplexing including:
+> Multiplexing is a **core feature of xumux** and no longer needs a separate extension document.
+> xumux provides native channel multiplexing including:
 >
 > - **Channel byte in every frame header** (byte 0) — all messages are inherently multiplexed
 > - **OPEN_CHANNEL / CHANNEL_ACK / CHANNEL_REJECT / CLOSE_CHANNEL** — dynamic channel lifecycle on the control channel (0x00)
@@ -11,11 +11,11 @@
 > - **Channel IDs 1–254** assigned by the server during HELLO/WELCOME or dynamically via OPEN_CHANNEL
 > - **Channel 0 (control)** is always implicit and carries all protocol messages
 >
-> See the [OpenMux README](../README.md) and core specification for full details.
+> See the [xumux README](../README.md) and core specification for full details.
 >
-> **Migration**: Any implementation using the old SocketPipe multiplexing extension should switch to native OpenMux channels. The concepts map directly:
+> **Migration**: Any implementation using the old SocketPipe multiplexing extension should switch to native xumux channels. The concepts map directly:
 >
-> | Old SocketPipe Multiplexing | OpenMux Native |
+> | Old SocketPipe Multiplexing | xumux Native |
 > |---|---|
 > | `CHANNEL_OPEN` (0x70) | `OPEN_CHANNEL` (0x03) |
 > | `CHANNEL_OPEN_ACK` (0x71) | `CHANNEL_ACK` (0x04) |

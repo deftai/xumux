@@ -1,16 +1,16 @@
-# OpenMux Extension: Port Forwarding
+# xumux Extension: Port Forwarding
 
 **Status**: Draft
 **Extension ID**: `port-forwarding`
-**Depends on**: OpenMux 0.1.0+
+**Depends on**: xumux 0.1.0+
 
 ## Overview
 
-Port Forwarding enables SSH-style local and remote TCP port forwarding over an OpenMux connection. Each forwarded connection gets its own OpenMux channel, leveraging native multiplexing.
+Port Forwarding enables SSH-style local and remote TCP port forwarding over an xumux connection. Each forwarded connection gets its own xumux channel, leveraging native multiplexing.
 
 ## Use Cases
 
-- Access remote database through an OpenMux connection
+- Access remote database through an xumux connection
 - Expose local development server to remote environment
 - Secure tunneling of web services
 - Jump host / bastion scenarios
@@ -22,7 +22,7 @@ Port forwarding control messages are sent on a dedicated `port-forward-ctl` chan
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 graph TB
-    subgraph "OpenMux Connection"
+    subgraph "xumux Connection"
         CH0["Channel 0 — Control"]
         CHC["Channel 1 — port-forward-ctl"]
         CH3["Channel 3 — forwarded conn #1"]
@@ -37,8 +37,8 @@ graph TB
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 graph LR
-    LC["Local App"] -->|"localhost:8080"| OC["OpenMux Client"]
-    OC -->|"OpenMux channel"| OS["OpenMux Server"]
+    LC["Local App"] -->|"localhost:8080"| OC["xumux Client"]
+    OC -->|"xumux channel"| OS["xumux Server"]
     OS -->|"TCP"| DB["db.internal:5432"]
 ```
 
@@ -47,8 +47,8 @@ graph LR
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 graph RL
-    RU["Remote User"] -->|"server:9000"| OS["OpenMux Server"]
-    OS -->|"OpenMux channel"| OC["OpenMux Client"]
+    RU["Remote User"] -->|"server:9000"| OS["xumux Server"]
+    OS -->|"xumux channel"| OC["xumux Client"]
     OC -->|"TCP"| DS["localhost:3000"]
 ```
 
@@ -123,7 +123,7 @@ On failure:
 
 ### FORWARD_CONNECTION (0x04)
 
-Sent when a new TCP connection arrives on a forwarded port. The sender also opens a new OpenMux channel for the connection data.
+Sent when a new TCP connection arrives on a forwarded port. The sender also opens a new xumux channel for the connection data.
 
 **Payload** (JSON):
 ```json

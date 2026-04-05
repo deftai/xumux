@@ -1,15 +1,15 @@
-# OpenMux on WebRTC DataChannels
+# xumux on WebRTC DataChannels
 
 **Status**: Draft
 **Binding ID**: `webrtc`
 
 ## Overview
 
-This binding defines how OpenMux operates over WebRTC DataChannels. WebRTC is the **preferred transport** for OpenMux — it provides UDP-based low-latency delivery, built-in DTLS encryption, NAT traversal, and native support for multiple channels with independent reliability settings.
+This binding defines how xumux operates over WebRTC DataChannels. WebRTC is the **preferred transport** for xumux — it provides UDP-based low-latency delivery, built-in DTLS encryption, NAT traversal, and native support for multiple channels with independent reliability settings.
 
 ## Signaling
 
-WebRTC requires a signaling phase to exchange SDP offers/answers and ICE candidates. OpenMux does not prescribe a specific signaling mechanism — any of the following work:
+WebRTC requires a signaling phase to exchange SDP offers/answers and ICE candidates. xumux does not prescribe a specific signaling mechanism — any of the following work:
 
 - **HTTP POST** — Client POSTs SDP offer, receives SDP answer (simplest)
 - **WebSocket** — Ephemeral WebSocket for signaling, closed after DataChannels open
@@ -87,9 +87,9 @@ The `candidates` array in `/offer` allows bundling all gathered candidates with 
 
 ## Channel Mapping
 
-Each OpenMux channel maps to a dedicated WebRTC DataChannel. This provides true independent reliability and ordering per channel, enforced by the transport itself.
+Each xumux channel maps to a dedicated WebRTC DataChannel. This provides true independent reliability and ordering per channel, enforced by the transport itself.
 
-| OpenMux Channel | DataChannel Label | Ordered | Reliable | MaxRetransmits |
+| xumux Channel | DataChannel Label | Ordered | Reliable | MaxRetransmits |
 |-----------------|-------------------|---------|----------|----------------|
 | 0 (control) | `omux/control` | Yes | Yes | — |
 | Application-defined | `omux/<name>` | Per-channel | Per-channel | Per-channel |
@@ -143,18 +143,18 @@ Examples:
 All DataChannels MUST set their protocol to:
 
 ```
-openmux/0.1
+xumux/0.1
 ```
 
 ### Channel ID Assignment
 
-When using WebRTC, the Channel byte in the OpenMux frame header maps to the DataChannel. Since each DataChannel is already a separate stream, the Channel byte is technically redundant but MUST still be present for cross-transport compatibility.
+When using WebRTC, the Channel byte in the xumux frame header maps to the DataChannel. Since each DataChannel is already a separate stream, the Channel byte is technically redundant but MUST still be present for cross-transport compatibility.
 
 In practice, implementations MAY use the DataChannel label to identify the channel and ignore the Channel byte, but MUST write it correctly for interoperability with gateways that bridge between transports.
 
 ## Frame Format
 
-Identical to core OpenMux. Each DataChannel message is one complete OpenMux frame:
+Identical to core xumux. Each DataChannel message is one complete xumux frame:
 
 ```
 [Channel: 1][Type: 1][Flags: 1][Reserved: 1][Length: 2][Payload: variable]
@@ -177,15 +177,15 @@ Application protocols specify which mode each channel uses.
 
 ## Coexistence with Media Tracks
 
-WebRTC PeerConnections can carry both DataChannels and media tracks (audio/video) simultaneously. OpenMux DataChannels coexist with media tracks in the same PeerConnection:
+WebRTC PeerConnections can carry both DataChannels and media tracks (audio/video) simultaneously. xumux DataChannels coexist with media tracks in the same PeerConnection:
 
 ```
 PeerConnection
 ├── MediaTrack: video (H264/VP9)     ← video output
 ├── MediaTrack: audio (Opus)         ← voice I/O
-├── DataChannel: omux/control        ← OpenMux control
-├── DataChannel: omux/pointer        ← OpenMux mouse
-└── DataChannel: omux/button         ← OpenMux keyboard/clicks
+├── DataChannel: omux/control        ← xumux control
+├── DataChannel: omux/pointer        ← xumux mouse
+└── DataChannel: omux/button         ← xumux keyboard/clicks
 ```
 
 One SDP negotiation, one ICE dance, one DTLS handshake. The DataChannels ride alongside media at zero extra connection cost.
@@ -202,7 +202,7 @@ One SDP negotiation, one ICE dance, one DTLS handshake. The DataChannels ride al
 
 3. DataChannels open:
    a. omux/control opens first
-   b. OpenMux HELLO/WELCOME exchanged on omux/control
+   b. xumux HELLO/WELCOME exchanged on omux/control
    c. Application channels open per WELCOME
 
 4. Application data flows over DataChannels
