@@ -15,7 +15,7 @@ xumux (pronounced zuh-mux) is an open protocol for multiplexing typed, named cha
 Think of it as **a universal way to run multiple logical channels over a single connection** — with each channel having its own reliability and ordering guarantees.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4a90d9', 'secondaryColor': '#7ab648', 'tertiaryColor': '#e8a838', 'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph TB
     subgraph "Application Layer"
         A1["VROOM-Graphical<br/>(remote desktop)"]
@@ -82,7 +82,7 @@ On QUIC/WebTransport, the magic number MUST NOT be sent (protocol is identified 
 All xumux messages use a 6-byte header followed by an optional payload:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'primaryColor': '#909090'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 packet-beta
   0-7: "Channel (1)"
   8-15: "Type (1)"
@@ -104,7 +104,7 @@ packet-beta
 #### Flags
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'primaryColor': '#909090'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 packet-beta
   0: "EXT"
   1: "FRG"
@@ -134,7 +134,7 @@ packet-beta
 Messages larger than the transport's MTU (or the negotiated max message size) MUST be fragmented:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant S as Sender
     participant R as Receiver
@@ -160,7 +160,7 @@ All fragments MUST have the same Channel, Type, and be delivered in order on tha
 Channel 0 is **always** the control channel. It is implicitly open — never needs OPEN_CHANNEL. It carries all xumux protocol messages.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'primaryColor': '#4a90d9', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph TD
     subgraph "Control Channel (0x00) Message Types"
         subgraph "Handshake (0x01-0x02)"
@@ -204,12 +204,12 @@ graph TD
 ### Connection Lifecycle
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'noteBkgColor': '#e8e8e8', 'actorBkg': '#4a90d9', 'actorTextColor': '#fff', 'signalColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
 
-    Note over C,S: Transport already established<br/>(WebRTC DC, WebSocket, TCP, etc.)
+    Note over C,S: Transport already established
 
     C->>S: HELLO (version, capabilities, requested channels)
     S->>C: WELCOME (version, capabilities, assigned channel IDs)
@@ -350,12 +350,12 @@ If the server cannot accept the connection (authentication failed, version incom
 The client MUST treat receiving CLOSE instead of WELCOME as a rejected handshake.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
 
-    C->>S: HELLO {version, auth, ...}
+    C->>S: HELLO {version, auth
 
     alt Version + auth OK
         S->>C: WELCOME {version, channels, ...}
@@ -385,7 +385,7 @@ The client sends its version in HELLO. The server responds in WELCOME with its o
 Servers MUST enforce a timeout for receiving HELLO after transport establishment. Default: **10 seconds**. If no HELLO is received, the server MUST close the transport.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph LR
     subgraph "Channel ID Space"
         C0["0x00<br/>Control<br/>(reserved)"]
@@ -393,9 +393,9 @@ graph LR
         C2["0xFF<br/>Reserved"]
     end
 
-    style C0 fill:#4a90d9,color:#fff
-    style C1 fill:#7ab648,color:#fff
-    style C2 fill:#999,color:#fff
+    style C0 fill:#909090,color:#000000
+    style C1 fill:#808080,color:#000000
+    style C2 fill:#707070,color:#000000
 ```
 
 #### OPEN_CHANNEL (0x03) — Bidirectional
@@ -426,7 +426,7 @@ Dynamically open a new channel after the handshake. Sent on channel 0. Payload i
 | `metadata` | object | MAY | Application-specific metadata |
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant I as Initiator
     participant R as Responder
@@ -501,7 +501,7 @@ After CLOSE_CHANNEL, the channel ID is **freed** and MAY be reused for future OP
 **Guard**: CLOSE_CHANNEL MUST NOT be sent for channel 0. The control channel can only be closed via CLOSE (which closes the entire connection). Implementations receiving CLOSE_CHANNEL for channel 0 MUST respond with ERROR code 1002 (PROTOCOL_ERROR).
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'stateLabelColor': '#000000', 'compositeBackground': '#a0a0a0'}}}%%
 stateDiagram-v2
     [*] --> Requested: Initiator sends OPEN_CHANNEL
     Requested --> Open: Responder sends CHANNEL_ACK
@@ -515,9 +515,9 @@ stateDiagram-v2
 Keepalive probe. Sent on channel 0. Payload:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'primaryColor': '#909090'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 packet-beta
-  0-31: "Timestamp (4 bytes, ms since epoch, big-endian)"
+  0-31: "Timestamp
 ```
 
 | Field | Size | Description |
@@ -531,9 +531,9 @@ The receiver MUST respond with PONG containing the same timestamp.
 Keepalive response. Sent on channel 0. Payload:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'primaryColor': '#909090'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 packet-beta
-  0-31: "Echo Timestamp (4 bytes)"
+  0-31: "Echo Timestamp
   32-63: "Receiver Timestamp (4 bytes)"
 ```
 
@@ -545,7 +545,7 @@ packet-beta
 This allows both sides to compute round-trip time: `RTT = local_now - echo_timestamp`.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client (t=1000ms)
     participant S as Server
@@ -575,12 +575,12 @@ Graceful connection close. Sent on channel 0. Payload is JSON (UTF-8).
 The side that receives CLOSE SHOULD respond with its own CLOSE (ack), then both sides close the transport.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
 
-    C->>S: CLOSE {code: 1000, reason: "done"}
+    C->>S: CLOSE {code: 1000
     Note over S: Stop sending, flush buffers
     S->>C: CLOSE {code: 1000, reason: "ack"}
     Note over C,S: Transport closed
@@ -635,7 +635,7 @@ Codes 1000-1003 are intentionally aligned with [WebSocket close codes (RFC 6455)
 Parameters are negotiated during HELLO/WELCOME:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph TD
     subgraph "Client HELLO"
         CH1["maxMessageSize: 65535"]
@@ -675,7 +675,7 @@ graph TD
 ### Transport Mapping
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph TB
     subgraph "WebRTC DataChannels"
         direction TB
