@@ -1,3 +1,5 @@
+![xumux logo](xumux-logo.svg)
+
 # xumux
 
 **Transport-agnostic channel multiplexing protocol**
