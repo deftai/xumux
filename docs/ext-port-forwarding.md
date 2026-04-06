@@ -20,7 +20,7 @@ Port Forwarding enables SSH-style local and remote TCP port forwarding over an x
 Port forwarding control messages are sent on a dedicated `port-forward-ctl` channel. Each individual forwarded TCP connection is assigned its own dynamically opened channel.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph TB
     subgraph "xumux Connection"
         CH0["Channel 0 — Control"]
@@ -35,7 +35,7 @@ graph TB
 ### Local Forwarding (-L)
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph LR
     LC["Local App"] -->|"localhost:8080"| OC["xumux Client"]
     OC -->|"xumux channel"| OS["xumux Server"]
@@ -45,7 +45,7 @@ graph LR
 ### Remote Forwarding (-R)
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph RL
     RU["Remote User"] -->|"server:9000"| OS["xumux Server"]
     OS -->|"xumux channel"| OC["xumux Client"]
@@ -57,7 +57,7 @@ graph RL
 The `port-forward-ctl` channel is opened during or after handshake:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
@@ -140,7 +140,7 @@ The sender simultaneously sends an `OPEN_CHANNEL` on channel 0 with name matchin
 ## Local Forward Flow
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant A as Local App
     participant C as Client
@@ -172,7 +172,7 @@ sequenceDiagram
 ## Remote Forward Flow
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant D as Dev Server :3000
     participant C as Client

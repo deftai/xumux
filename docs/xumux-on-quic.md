@@ -10,7 +10,7 @@ This binding defines how xumux operates over QUIC streams, accessed via the **We
 WebTransport is the browser API that exposes QUIC streams and datagrams to JavaScript. This binding covers both native QUIC (server-to-server, CLI) and WebTransport (browser clients).
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph TB
     subgraph "Browser Client"
         WT["WebTransport API"]
@@ -31,7 +31,7 @@ graph TB
 ## Why QUIC?
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph LR
     subgraph "WebRTC DataChannel"
         W1["ICE negotiation ⏱️"]
@@ -64,7 +64,7 @@ graph LR
 ## Architecture
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333', 'noteBkgColor': '#e8e8e8'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph TB
     subgraph "QUIC Connection"
         direction TB
@@ -111,7 +111,7 @@ This is cleaner than WebRTC DataChannels because QUIC streams are lightweight (j
 - If a frame arrives on an unknown stream with an unknown Channel byte, the receiver MUST send ERROR (code 4003, CHANNEL_NOT_FOUND) on the control stream.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph TD
     subgraph "xumux Channel Types"
         R["Reliable + Ordered<br/>(control, button, data)"]
@@ -130,7 +130,7 @@ graph TD
 ## Connection Flow
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333', 'noteBkgColor': '#e8e8e8'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
@@ -167,7 +167,7 @@ sequenceDiagram
 ### 0-RTT Connection Resumption
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
@@ -264,7 +264,7 @@ Datagram max size depends on the QUIC path MTU. The server advertises `max_datag
 ## Channel-to-Stream Assignment
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph TD
     subgraph "WELCOME Response"
         W["channels: [<br/>  {name: 'control', id: 0, streamId: 0},<br/>  {name: 'pointer', id: 1, transport: 'datagram'},<br/>  {name: 'button', id: 2, streamId: 2}<br/>]"]
@@ -295,7 +295,7 @@ Channels with `"transport": "datagram"` share the datagram pipe and are disambig
 Creating a new channel is simpler on QUIC than any other transport:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
@@ -318,7 +318,7 @@ QUIC streams are cheap — creating one is just sending a frame with a new strea
 QUIC supports connection migration — if the client's IP address changes (e.g., switching from WiFi to cellular), the QUIC connection survives. This is transparent to xumux.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
@@ -368,7 +368,7 @@ WebTransport requires a valid TLS certificate (self-signed certificates can be a
 ## Fallback Chain
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph TD
     A{QUIC/WebTransport<br/>available?}
     A -->|Yes| Q["✅ QUIC<br/>Best performance"]
@@ -376,9 +376,9 @@ graph TD
     B -->|Yes| W["✅ WebRTC DataChannels<br/>Universal browser support"]
     B -->|No| C["✅ WebSocket<br/>Works everywhere"]
 
-    style Q fill:#4a90d9,color:#fff
-    style W fill:#7ab648,color:#fff
-    style C fill:#e8a838,color:#fff
+    style Q fill:#909090,color:#000000
+    style W fill:#808080,color:#000000
+    style C fill:#707070,color:#000000
 ```
 
 Recommended client behavior:
@@ -399,7 +399,7 @@ Timeout per attempt: **5 seconds** before trying next option.
 ## Comparison: QUIC vs WebRTC for VROOM-Graphical
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040'}}}%%
 graph LR
     subgraph "WebRTC (today)"
         direction TB

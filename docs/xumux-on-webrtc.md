@@ -105,7 +105,7 @@ The **client** creates all DataChannels:
 4. For dynamic channels (OPEN_CHANNEL after handshake), the requesting side creates the DataChannel, then sends OPEN_CHANNEL. The CHANNEL_ACK confirms the other side has accepted it.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
