@@ -24,7 +24,7 @@ File transfer uses xumux's native channel multiplexing. A dedicated reliable, or
 graph TB
     subgraph "xumux Connection"
         CH0["Channel 0<br/>Control"]
-        CH1["Channel 1<br/>Terminal (TermPipe)"]
+        CH1["Channel 1<br/>Terminal (VROOM-Terminal)"]
         CH2["Channel 2<br/>File Transfer"]
     end
 

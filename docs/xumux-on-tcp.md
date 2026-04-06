@@ -67,7 +67,7 @@ TCP servers SHOULD listen on a well-known port. Application protocols define the
 
 | Application | Default Port |
 |-------------|-------------|
-| TermPipe | 2222 |
+|| VROOM-Terminal | 2222 |
 | (others) | Application-defined |
 
 ## Reliability and Ordering

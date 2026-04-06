@@ -134,9 +134,9 @@ omux/<channel-name>
 
 Examples:
 - `omux/control` — always present
-- `omux/pointer` — VROOM mouse movement (unreliable, unordered)
-- `omux/button` — VROOM clicks/keys (reliable, ordered)
-- `omux/data` — TermPipe terminal data (reliable, ordered)
+|- `omux/pointer` — VROOM-Graphical mouse movement (unreliable, unordered)
+|- `omux/button` — VROOM-Graphical clicks/keys (reliable, ordered)
+|- `omux/data` — VROOM-Terminal terminal data (reliable, ordered)
 
 ### DataChannel Protocol
 

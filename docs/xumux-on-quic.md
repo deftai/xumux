@@ -184,7 +184,7 @@ sequenceDiagram
     Note over C,S: Data flowing with ZERO round trips of setup latency
 ```
 
-0-RTT is particularly valuable for VROOM — reconnecting after a network glitch resumes the interactive session instantly.
+0-RTT is particularly valuable for VROOM-Graphical — reconnecting after a network glitch resumes the interactive session instantly.
 
 **Security note**: 0-RTT data is replayable. xumux HELLO is idempotent, so this is safe. Application protocols MUST NOT send non-idempotent data in 0-RTT.
 
@@ -396,7 +396,7 @@ Timeout per attempt: **5 seconds** before trying next option.
 - QUIC has built-in amplification attack mitigation (address validation)
 - No additional encryption layer is needed
 
-## Comparison: QUIC vs WebRTC for VROOM
+## Comparison: QUIC vs WebRTC for VROOM-Graphical
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000', 'lineColor': '#333'}}}%%

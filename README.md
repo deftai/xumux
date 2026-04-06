@@ -18,8 +18,8 @@ Think of it as **a universal way to run multiple logical channels over a single 
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4a90d9', 'secondaryColor': '#7ab648', 'tertiaryColor': '#e8a838', 'primaryTextColor': '#000', 'lineColor': '#333'}}}%%
 graph TB
     subgraph "Application Layer"
-        A1["VROOM<br/>(remote desktop)"]
-        A2["TermPipe<br/>(terminal I/O)"]
+        A1["VROOM-Graphical<br/>(remote desktop)"]
+        A2["VROOM-Terminal<br/>(remote terminal)"]
         A3["Your Protocol<br/>(anything)"]
     end
 
@@ -30,8 +30,9 @@ graph TB
     subgraph "Transport Layer"
         T1["WebRTC<br/>DataChannel"]
         T2["WebSocket"]
-        T3["TCP"]
-        T4["stdio"]
+        T3["QUIC"]
+        T4["TCP"]
+        T5["stdio"]
     end
 
     A1 --> OM
@@ -41,6 +42,7 @@ graph TB
     OM --> T2
     OM --> T3
     OM --> T4
+    OM --> T5
 ```
 
 ## Design Goals
@@ -713,8 +715,8 @@ xumux is a multiplexing layer. Application protocols define what flows over the 
 
 | Protocol | Description | Repository |
 |----------|-------------|------------|
-| **VROOM** | Virtual Remoting Over xumux — WebRTC video/audio + interactive browser control for AI agents | [github.com/visionik/vroom](https://github.com/visionik/vroom) |
-| **TermPipe** | Terminal I/O transport (tunnel + PTY modes) — successor to SocketPipe | (this repo, `docs/app-termpipe.md`) |
+| **VROOM-Graphical** | Virtual Remoting Over xumux — WebRTC video/audio + interactive browser control for AI agents | [github.com/visionik/vroom](https://github.com/visionik/vroom) |
+|| **VROOM-Terminal** | Terminal I/O transport (tunnel + PTY modes) — successor to SocketPipe | (this repo, `docs/app-termpipe.md`) |
 
 ## Test Vectors
 
