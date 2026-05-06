@@ -33,7 +33,7 @@ Each WebSocket binary message MUST contain exactly one complete xumux frame. Do 
 Identical to core xumux:
 
 ```
-[Channel: 1][Type: 1][Flags: 1][Reserved: 1][Length: 2][Payload: variable]
+[Channel: 2][Type: 1][Flags: 1][Length: 4][Payload: variable]
 ```
 
 WebSocket framing already provides message boundaries, so the Length field is technically redundant but MUST be present for cross-transport compatibility and validation.

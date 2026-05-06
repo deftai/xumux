@@ -157,7 +157,7 @@ In practice, implementations MAY use the DataChannel label to identify the chann
 Identical to core xumux. Each DataChannel message is one complete xumux frame:
 
 ```
-[Channel: 1][Type: 1][Flags: 1][Reserved: 1][Length: 2][Payload: variable]
+[Channel: 2][Type: 1][Flags: 1][Length: 4][Payload: variable]
 ```
 
 DataChannel messages are already framed by SCTP, so no additional length-prefix or delimiter is needed at the transport level.
@@ -229,5 +229,5 @@ Recommended timeout: **10 seconds** from SDP exchange to first DataChannel open.
 ## SCTP Considerations
 
 - Default SCTP message size limit is ~256KB (browser-dependent)
-- For larger payloads, use the EXTENDED_LENGTH flag and chunk at the application layer
+- For larger payloads, use fragmentation or chunk at the application layer
 - SCTP congestion control is automatic — no manual flow control needed for most use cases

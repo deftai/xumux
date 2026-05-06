@@ -238,12 +238,12 @@ buttonWriter.write(encodexumuxFrame(2, 0x12, keyPayload));
 Same as core xumux. Since QUIC streams are byte streams (like TCP), frames must be parsed using the Length field:
 
 ```
-[Channel: 1][Type: 1][Flags: 1][Reserved: 1][Length: 2][Payload: variable]
+[Channel: 2][Type: 1][Flags: 1][Length: 4][Payload: variable]
 ```
 
-Each QUIC stream carries one xumux channel. The Channel byte is redundant (the stream identity determines the channel) but MUST be present for cross-transport compatibility.
+Each QUIC stream carries one xumux channel. The Channel field is redundant (the stream identity determines the channel) but MUST be present for cross-transport compatibility.
 
-**Stream framing note**: Unlike WebSocket/DataChannel (which provide message boundaries), QUIC streams are byte streams. Implementations MUST parse frames by reading the 6-byte header, then reading exactly `Length` bytes of payload — identical to the TCP binding.
+**Stream framing note**: Unlike WebSocket/DataChannel (which provide message boundaries), QUIC streams are byte streams. Implementations MUST parse frames by reading the 8-byte header, then reading exactly `Length` bytes of payload — identical to the TCP binding.
 
 However, WebTransport's `readable`/`writable` streams in browsers operate on `Uint8Array` chunks, not raw bytes. Implementations SHOULD write one complete xumux frame per `write()` call and handle partial reads on the receive side.
 
@@ -252,14 +252,13 @@ However, WebTransport's `readable`/`writable` streams in browsers operate on `Ui
 QUIC datagrams are self-contained — each datagram is one complete message. The frame format is the same, but:
 
 - Length field is redundant (datagram size is known) — MUST still be present
-- EXTENDED_LENGTH MUST NOT be used (datagrams have a max size, typically ~1200 bytes)
 - FRAGMENT flags MUST NOT be used (datagrams cannot be reassembled reliably)
 
 ```
 One QUIC datagram = one xumux frame = one pointer/sensor event
 ```
 
-Datagram max size depends on the QUIC path MTU. The server advertises `max_datagram_frame_size` during handshake. xumux pointer events are 10 bytes total (6 header + 4 payload), well within any MTU.
+Datagram max size depends on the QUIC path MTU. The server advertises `max_datagram_frame_size` during handshake. xumux pointer events are 12 bytes total (8 header + 4 payload), well within any MTU.
 
 ## Channel-to-Stream Assignment
 

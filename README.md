@@ -48,7 +48,7 @@ graph TB
 ## Design Goals
 
 - **Transport-agnostic**: Same frame format and semantics over any transport
-- **Minimal overhead**: 6-byte header for the common case, extensible when needed
+- **Minimal overhead**: 8-byte fixed header, no variable-width framing complexity
 - **Channel-native**: First-class support for named, typed channels with independent reliability
 - **Simple to implement**: Any language, any platform, in an afternoon
 - **Composable**: Application protocols build on top — xumux doesn't define what you send, just how you multiplex it
@@ -79,34 +79,32 @@ On QUIC/WebTransport, the magic number MUST NOT be sent (protocol is identified 
 
 ### Frame Format
 
-All xumux messages use a 6-byte header followed by an optional payload:
+All xumux messages use an 8-byte fixed header followed by an optional payload:
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'clusterBkg': '#c0c0c0', 'clusterBorder': '#606060'}}}%%
 packet-beta
-  0-7: "Channel (1)"
-  8-15: "Type (1)"
-  16-23: "Flags (1)"
-  24-31: "Reserved (1)"
-  32-47: "Payload Length (2)"
-  48-79: "Payload (variable) ..."
+  0-15: "Channel (2)"
+  16-23: "Type (1)"
+  24-31: "Flags (1)"
+  32-63: "Payload Length (4)"
+  64-95: "Payload (variable) ..."
 ```
 
 | Offset | Field | Size | Description |
 |--------|-------|------|-------------|
-| 0 | Channel | 1 byte | Logical channel ID (`0x00` = control channel) |
-| 1 | Type | 1 byte | Message type (scoped to channel — type `0x01` on channel 0 means HELLO, type `0x01` on channel 3 means whatever the app defines) |
-| 2 | Flags | 1 byte | Bitfield (see below) |
-| 3 | Reserved | 1 byte | MUST be `0x00` |
-| 4 | Payload Length | 2 bytes | Big-endian. Max 65,535 bytes. |
-| 6 | Payload | variable | Message-specific data |
+| 0 | Channel | 2 bytes | Logical channel ID, big-endian (`0x0000` = control channel) |
+| 2 | Type | 1 byte | Message type (scoped to channel — type `0x01` on channel 0 means HELLO, type `0x01` on channel 3 means whatever the app defines) |
+| 3 | Flags | 1 byte | Bitfield (see below) |
+| 4 | Payload Length | 4 bytes | Big-endian. Max 4,294,967,295 bytes (~4GB). |
+| 8 | Payload | variable | Message-specific data |
 
 #### Flags
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'clusterBkg': '#c0c0c0', 'clusterBorder': '#606060'}}}%%
 packet-beta
-  0: "EXT"
+  0: "Rsv"
   1: "FRG"
   2: "FIN"
   3-7: "Reserved"
@@ -114,24 +112,25 @@ packet-beta
 
 | Bit | Name | Description |
 |-----|------|-------------|
-| 0 | `EXTENDED_LENGTH` | Payload Length is 4 bytes instead of 2 (header becomes 8 bytes, max ~4GB) |
+| 0 | Reserved | MUST be 0 |
 | 1 | `FRAGMENT` | This message is a fragment of a larger message |
 | 2 | `FRAGMENT_END` | This is the last fragment |
 | 3-7 | Reserved | MUST be 0 |
 
-**Standard frame (6 bytes header):**
 ```
-[Channel:1][Type:1][Flags:1][Rsv:1][Length:2][Payload:0-65535]
-```
-
-**Extended frame (8 bytes header, EXTENDED_LENGTH flag set):**
-```
-[Channel:1][Type:1][Flags:1][Rsv:1][Length:4][Payload:0-4294967295]
+[Channel:2][Type:1][Flags:1][Length:4][Payload:0-4294967295]
 ```
 
 #### Fragmentation
 
-Messages larger than the transport's MTU (or the negotiated max message size) MUST be fragmented:
+Fragmentation serves two purposes:
+
+1. **Transport MTU compliance**: Messages larger than the transport's MTU or negotiated max message size MUST be split into fragments.
+2. **Head-of-line blocking prevention**: On single-stream transports (WebSocket, TCP, stdio) where all channels share one byte stream, a large message on one channel blocks all other channels until it finishes. Fragmentation allows senders to interleave fragments from different channels, preventing starvation of latency-sensitive channels (e.g., control, pointer) during large transfers.
+
+On multi-stream transports (QUIC streams, WebRTC DataChannels) where each channel has its own stream, fragmentation is only needed for MTU compliance — head-of-line blocking is handled natively by the transport.
+
+Messages that exceed the applicable size limit MUST be fragmented:
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
@@ -246,7 +245,7 @@ sequenceDiagram
 
 The first message after transport establishment. MUST be sent by the client.
 
-> **Encoding convention**: All control channel (0x00) messages with variable-length payloads use **JSON (UTF-8)**. This keeps the control plane human-readable and debuggable. Application channels (1-254) use whatever encoding the application protocol defines (typically binary for hot-path events, JSON for control).
+> **Encoding convention**: All control channel (0x0000) messages with variable-length payloads use **JSON (UTF-8)**. This keeps the control plane human-readable and debuggable. Application channels (1–65534) use whatever encoding the application protocol defines (typically binary for hot-path events, JSON for control).
 >
 > The only non-JSON control messages are PING and PONG, which use fixed-size binary payloads for efficiency.
 
@@ -332,9 +331,9 @@ Sent in response to HELLO. Payload is JSON (UTF-8).
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | string | Channel name (matches request) |
-| `id` | number | Assigned channel ID (1-254). Used in frame Channel byte. |
+|| `id` | number | Assigned channel ID (1–65534). Used in frame Channel field. |
 
-**Channel ID 0** is always the control channel (implicit, never listed in HELLO/WELCOME). Server assigns IDs 1-254 to application channels. ID 255 is reserved.
+**Channel ID 0x0000** is always the control channel (implicit, never listed in HELLO/WELCOME). Server assigns IDs 1–65534 (0x0001–0xFFFE) to application channels. ID 0xFFFF is reserved.
 
 #### Handshake Rejection
 
@@ -387,10 +386,10 @@ Servers MUST enforce a timeout for receiving HELLO after transport establishment
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'clusterBkg': '#c0c0c0', 'clusterBorder': '#606060'}}}%%
 graph LR
-    subgraph "Channel ID Space"
-        C0["0x00<br/>Control<br/>(reserved)"]
-        C1["0x01-0xFE<br/>Application<br/>(assigned by server)"]
-        C2["0xFF<br/>Reserved"]
+    subgraph "Channel ID Space (2 bytes)"
+        C0["0x0000<br/>Control<br/>(reserved)"]
+        C1["0x0001-0xFFFE<br/>Application<br/>(assigned by server)"]
+        C2["0xFFFF<br/>Reserved"]
     end
 
     style C0 fill:#909090,color:#000000
@@ -457,7 +456,7 @@ Confirms a channel was opened. Sent on channel 0. Payload is JSON (UTF-8).
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `requestId` | number | MUST | Matches the OPEN_CHANNEL requestId |
-| `id` | number | MUST | Assigned channel ID (1-254) |
+|| `id` | number | MUST | Assigned channel ID (1–65534) |
 | `name` | string | MUST | Channel name (echoed back for clarity) |
 
 After CHANNEL_ACK, both sides MAY immediately send messages on the new channel ID.
@@ -620,7 +619,7 @@ Codes 1000-1003 are intentionally aligned with [WebSocket close codes (RFC 6455)
 | 1003 | UNSUPPORTED | Unsupported message type or feature |
 | 4000 | AUTH_FAILED | Authentication failed |
 | 4001 | INVALID_MESSAGE | Malformed message |
-| 4002 | CHANNEL_FULL | Max channels (254) reached |
+|| 4002 | CHANNEL_FULL | Max channels (65534) reached |
 | 4003 | CHANNEL_NOT_FOUND | Message on unknown channel ID |
 | 4004 | RATE_LIMITED | Too many messages |
 | 4005 | MESSAGE_TOO_LARGE | Payload exceeds negotiated max |
@@ -725,47 +724,46 @@ Reference hex dumps for implementors to validate parsers. All multi-byte values 
 ### PING (timestamp = 1000ms)
 
 ```
-00 10 00 00 00 04 00 00 03 E8
-│  │  │  │  ├──┘ ├────────┘
-│  │  │  │  │    └─ Payload: uint32 1000 (0x000003E8)
-│  │  │  │  └─ Length: 4
-│  │  │  └─ Reserved: 0x00
-│  │  └─ Flags: 0x00
-│  └─ Type: 0x10 (PING)
-└─ Channel: 0x00 (control)
+00 00 10 00 00 00 00 04 00 00 03 E8
+├──┘  │  │  ├────────┘ ├────────┘
+│     │  │  │          └─ Payload: uint32 1000 (0x000003E8)
+│     │  │  └─ Length: 4
+│     │  └─ Flags: 0x00
+│     └─ Type: 0x10 (PING)
+└─ Channel: 0x0000 (control)
 ```
 
-**Hex**: `00 10 00 00 00 04 00 00 03 E8`
+**Hex**: `00 00 10 00 00 00 00 04 00 00 03 E8`
 
 ### PONG (echo = 1000ms, receiver = 500ms)
 
 ```
-00 11 00 00 00 08 00 00 03 E8 00 00 01 F4
-│  │  │  │  ├──┘ ├────────┘  ├────────┘
-│  │  │  │  │    │            └─ Receiver timestamp: 500
-│  │  │  │  │    └─ Echo timestamp: 1000
-│  │  │  │  └─ Length: 8
-│  │  └─ Flags: 0x00
-│  └─ Type: 0x11 (PONG)
-└─ Channel: 0x00 (control)
+00 00 11 00 00 00 00 08 00 00 03 E8 00 00 01 F4
+├──┘  │  │  ├────────┘ ├────────┘  ├────────┘
+│     │  │  │          │            └─ Receiver timestamp: 500
+│     │  │  │          └─ Echo timestamp: 1000
+│     │  │  └─ Length: 8
+│     │  └─ Flags: 0x00
+│     └─ Type: 0x11 (PONG)
+└─ Channel: 0x0000 (control)
 ```
 
-**Hex**: `00 11 00 00 00 08 00 00 03 E8 00 00 01 F4`
+**Hex**: `00 00 11 00 00 00 00 08 00 00 03 E8 00 00 01 F4`
 
 ### MOUSE_MOVE on pointer channel (id=1, x=512, y=300)
 
 ```
-01 01 00 00 00 04 02 00 01 2C
-│  │  │  │  ├──┘ ├──┘  ├──┘
-│  │  │  │  │    │      └─ Y: 300 (0x012C)
-│  │  │  │  │    └─ X: 512 (0x0200)
-│  │  │  │  └─ Length: 4
-│  │  └─ Flags: 0x00
-│  └─ Type: 0x01 (MOUSE_MOVE, app-defined)
-└─ Channel: 0x01 (pointer)
+00 01 01 00 00 00 00 04 02 00 01 2C
+├──┘  │  │  ├────────┘ ├──┘  ├──┘
+│     │  │  │          │      └─ Y: 300 (0x012C)
+│     │  │  │          └─ X: 512 (0x0200)
+│     │  │  └─ Length: 4
+│     │  └─ Flags: 0x00
+│     └─ Type: 0x01 (MOUSE_MOVE, app-defined)
+└─ Channel: 0x0001 (pointer)
 ```
 
-**Hex**: `01 01 00 00 00 04 02 00 01 2C`
+**Hex**: `00 01 01 00 00 00 00 04 02 00 01 2C`
 
 ### HELLO (minimal)
 
@@ -774,15 +772,15 @@ Payload (JSON, UTF-8):
 {"version":[0,1,0],"channels":[]}
 
 Frame header:
-00 01 00 00 00 22
-│  │  │  │  ├──┘
-│  │  │  │  └─ Length: 34 (0x0022)
-│  │  └─ Flags: 0x00
-│  └─ Type: 0x01 (HELLO)
-└─ Channel: 0x00
+00 00 01 00 00 00 00 22
+├──┘  │  │  ├────────┘
+│     │  │  └─ Length: 34 (0x00000022)
+│     │  └─ Flags: 0x00
+│     └─ Type: 0x01 (HELLO)
+└─ Channel: 0x0000
 
 Full frame hex:
-00 01 00 00 00 22 7B 22 76 65 72 73 69 6F 6E 22 3A 5B 30 2C 31 2C 30 5D 2C 22 63 68 61 6E 6E 65 6C 73 22 3A 5B 5D 7D
+00 00 01 00 00 00 00 22 7B 22 76 65 72 73 69 6F 6E 22 3A 5B 30 2C 31 2C 30 5D 2C 22 63 68 61 6E 6E 65 6C 73 22 3A 5B 5D 7D
 ```
 
 ### Magic Number (TCP/stdio only)
@@ -807,14 +805,13 @@ A minimal xumux implementation MUST support:
 - HELLO / WELCOME (handshake)
 - CLOSE (graceful shutdown)
 - ERROR (error reporting)
-- Standard frame format (6-byte header)
+- 8-byte fixed frame format
 - One transport binding
 
 A minimal implementation MAY omit:
 - PING / PONG (keepalive)
 - OPEN_CHANNEL / CHANNEL_ACK / CHANNEL_REJECT / CLOSE_CHANNEL (dynamic channels)
 - Fragmentation (FRAGMENT / FRAGMENT_END flags)
-- EXTENDED_LENGTH flag
 - Magic number (if not using TCP/stdio)
 
 ### Full Implementation
@@ -824,7 +821,6 @@ A full xumux implementation MUST support everything in minimal, plus:
 - Dynamic channels (OPEN_CHANNEL / CHANNEL_ACK / CHANNEL_REJECT / CLOSE_CHANNEL)
 - PING / PONG with RTT measurement
 - Fragmentation
-- EXTENDED_LENGTH
 - Magic number on stream transports
 - HELLO timeout enforcement
 - Version negotiation

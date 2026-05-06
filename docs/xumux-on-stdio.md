@@ -18,11 +18,10 @@ This binding defines how xumux operates over standard input/output (stdin/stdout
 Same as TCP — stdio is a raw byte stream. Frames are parsed using the Length field:
 
 ```
-1. Read 6 bytes from stdin (header)
-2. Parse Channel, Type, Flags, Reserved, Payload Length
-3. If EXTENDED_LENGTH flag set, read 2 more bytes for 4-byte length
-4. Read exactly Payload Length bytes from stdin
-5. Frame complete — repeat
+1. Read 8 bytes from stdin (header)
+2. Parse Channel (2), Type (1), Flags (1), Payload Length (4)
+3. Read exactly Payload Length bytes from stdin
+4. Frame complete — repeat
 ```
 
 ## Channel Multiplexing

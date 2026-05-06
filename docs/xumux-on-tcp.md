@@ -20,11 +20,10 @@ Unlike WebSocket (which provides message boundaries) and WebRTC DataChannels (wh
 ### Reading Frames
 
 ```
-1. Read 6 bytes (header)
-2. Parse Channel, Type, Flags, Reserved, Payload Length
-3. If EXTENDED_LENGTH flag set, read 2 more bytes for 4-byte length
-4. Read exactly Payload Length bytes
-5. Frame complete — repeat
+1. Read 8 bytes (header)
+2. Parse Channel (2), Type (1), Flags (1), Payload Length (4)
+3. Read exactly Payload Length bytes
+4. Frame complete — repeat
 ```
 
 The Length field is **critical** in the TCP binding (unlike WebSocket/WebRTC where it's redundant). Implementations MUST NOT assume message boundaries.
