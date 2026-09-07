@@ -59,6 +59,8 @@ graph TB
 - Transport negotiation (the transport is already established when xumux starts)
 - Encryption (the transport provides this — DTLS for WebRTC, TLS for WebSocket/TCP)
 
+Library implementers: see [I/O stack](docs/io-stack.md) for how to layer transports, framing, and per-channel codecs (one ByteTransport → one session → N channels).
+
 ---
 
 ## Core Specification
@@ -716,6 +718,12 @@ xumux is a multiplexing layer. Application protocols define what flows over the 
 |----------|-------------|------------|
 | **VROOM-Graphical** | Virtual Remoting Over xumux — WebRTC video/audio + interactive browser control for AI agents | [github.com/visionik/vroom](https://github.com/visionik/vroom) |
 || **VROOM-Terminal** | Terminal I/O transport (tunnel + PTY modes) — successor to SocketPipe | (this repo, `docs/app-termpipe.md`) |
+
+## Implementing libraries
+
+Structure a library as **one ByteTransport → one xumux session → N channel connections**. Framing stays at the mux; application codecs live per channel.
+
+See [I/O stack](docs/io-stack.md). The TypeScript reference is [libxumux](https://github.com/deftai/libxumux).
 
 ## Test Vectors
 
