@@ -41,7 +41,7 @@ Responders MUST check `target` against an allow-list. An unrestricted `target` t
 
 Other types MUST cause CLOSE_CHANNEL `1002`.
 
-- Message boundaries carry no meaning. Receivers treat DATA as a continuous stream, and bridges may split or combine DATA messages freely. For the same reason DATA never needs fragmenting, which keeps "return credit as bytes are written" from ever waiting on reassembly.
+- Message boundaries carry no meaning. Receivers treat DATA as a continuous stream, and bridges may split or combine DATA messages freely. For the same reason DATA never needs fragmenting, which keeps the receiver's buffering down to single frames.
 - After sending EOF, a side MUST NOT send DATA, but it keeps receiving.
 - Once a side has both sent and received EOF, or has sent or received RESET, it closes the channel with CLOSE_CHANNEL (`1000` after EOFs, `1001` after RESET).
 - Flow control ([core §6](../core.md#6-flow-control)) gives a pipe the same backpressure as the socket it represents. Implementations MUST only return credit as the bytes are actually written to their end.

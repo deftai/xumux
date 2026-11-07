@@ -123,7 +123,7 @@ JSON payload.
   "application": "vroom-terminal/1",
   "extensions": ["session-resume/1"],
   "maxFramePayload": 65536,
-  "maxMessageSize": 1048576,
+  "maxMessageSize": 262144,
   "initialWindow": 262144,
   "pingInterval": 30,
   "pingTimeout": 10,
@@ -141,7 +141,7 @@ JSON payload.
 | `application` | string | SHOULD | | Application protocol and version, e.g. `"vroom-terminal/1"`. |
 | `extensions` | string[] | MAY | `[]` | Requested extensions, as `name/major` ([§11](#11-extensibility)). |
 | `maxFramePayload` | number | MAY | 65536 | Largest frame payload the **client** will accept ([§3.4](#34-limits)). |
-| `maxMessageSize` | number | MAY | 1048576 | Largest reassembled message the client will accept. |
+| `maxMessageSize` | number | MAY | 262144 | Largest reassembled message the client will accept. |
 | `initialWindow` | number | MAY | 262144 | Flow-control credit the client grants the server on each new channel ([§6](#6-flow-control)). |
 | `pingInterval` | number | MAY | 30 | Requested keepalive idle interval, seconds. `0` disables keepalive. |
 | `pingTimeout` | number | MAY | 10 | Requested keepalive timeout, seconds. |
@@ -169,7 +169,7 @@ JSON payload.
   "version": [0, 2, 0],
   "extensions": ["session-resume/1"],
   "maxFramePayload": 65536,
-  "maxMessageSize": 1048576,
+  "maxMessageSize": 262144,
   "initialWindow": 262144,
   "pingInterval": 30,
   "pingTimeout": 10,
@@ -183,7 +183,7 @@ JSON payload.
 | `version` | `[major, minor, patch]` | MUST | | The version the connection will use ([§3.5](#35-version-negotiation)). |
 | `extensions` | string[] | MAY | `[]` | Accepted extensions. MUST be a subset of the client's list. |
 | `maxFramePayload` | number | MAY | 65536 | Largest frame payload the **server** will accept. |
-| `maxMessageSize` | number | MAY | 1048576 | Largest reassembled message the server will accept. |
+| `maxMessageSize` | number | MAY | 262144 | Largest reassembled message the server will accept. |
 | `initialWindow` | number | MAY | 262144 | Credit the server grants the client on each new channel. |
 | `pingInterval` | number | MAY | 30 | Effective keepalive interval for both sides. |
 | `pingTimeout` | number | MAY | 10 | Effective keepalive timeout for both sides. |
@@ -205,8 +205,8 @@ A declared limit binds the peer from the moment the peer receives the declaring 
 | Limit | Default | Rule |
 |---|---|---|
 | `maxFramePayload` | 65536 | Payload Length of any frame sent to the declarer on channels other than 0. Channel 0 always uses 65536. MUST be ≥ 4096. |
-| `maxMessageSize` | 1048576 | Size of any reassembled application message sent to the declarer. MUST be ≥ `maxFramePayload`. |
-| `initialWindow` | 262144 | Credit per new channel. MUST be ≥ `maxFramePayload`. MUST be ≤ 2³¹−1. |
+| `maxMessageSize` | 262144 | Size of any reassembled application message sent to the declarer. MUST be ≥ `maxFramePayload`. |
+| `initialWindow` | 262144 | Credit per new channel. MUST be ≥ `maxMessageSize`, so that the largest allowed message always fits in a full window. MUST be ≤ 2³¹−1. |
 
 There is no "unlimited" value. A declared value outside these bounds MUST cause CLOSE `4001`. The server sends this CLOSE instead of WELCOME.
 
@@ -351,7 +351,7 @@ Flow control stops a fast sender on one channel from exhausting the receiver's m
 - **Unit:** payload bytes of non-probe frames. Headers are not counted.
 - **Initial credit:** when a channel opens, each side may send the peer up to the peer's declared `initialWindow` bytes on it.
 - **Sending:** a sender MUST NOT send a frame whose payload exceeds its remaining credit on that channel. It may fragment a message to fit ([§7](#7-fragmentation)), or wait.
-- **Consumed bytes:** a payload byte counts as consumed when the application has taken it, *or* when it is held in a partly reassembled message. Reassembly buffers are already bounded by `maxMessageSize`, and without this rule a message larger than the window could never complete.
+- **Consumed bytes:** a payload byte counts as consumed when the application has taken the message containing it. Because `initialWindow` ≥ `maxMessageSize` ([§3.4](#34-limits)), a message being reassembled always fits within the window, and can always complete once earlier messages have been consumed.
 - **Granting:** a receiver returns credit for consumed bytes with WINDOW_UPDATE. While data keeps arriving it SHOULD batch updates, for example once consumed-but-unreturned bytes reach half of its `initialWindow`. It MUST NOT withhold credit indefinitely: whenever consumed-but-unreturned bytes are above zero and no further frames for the channel are waiting to be processed, it MUST send the update promptly.
 - **Violations:** receiving more than the granted credit MUST cause CLOSE `4009` (FLOW_CONTROL_ERROR). So MUST an update that would raise a channel's available credit above 2³¹−1.
 
