@@ -1,5 +1,7 @@
 # xumux-ACP: Agent Client Protocol over xumux
 
+> **Not part of the xumux specification.** This is an application-level document written against xumux 0.1. It is kept here temporarily and is due to move to its own repository. Anything it puts on channel 0 must move onto an application channel.
+
 **Version:** 1.0 (Draft)
 **Status:** Proposed extension
 **Published:** <https://xumux.org/acp>

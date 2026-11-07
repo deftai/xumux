@@ -1,5 +1,7 @@
 # xumux Extension: Session Persistence
 
+> **Not part of the xumux specification.** This is an application-level document written against xumux 0.1. It is kept here temporarily and is due to move to VROOM-Terminal in deftai/vroom (DETACH, ATTACH and scrollback replay are terminal concepts, not mux concepts). Anything it puts on channel 0 must move onto an application channel.
+
 **Status**: Draft
 **Extension ID**: `session-persistence`
 **Depends on**: xumux 0.1.0+, Session Resume Extension (`session-resume`)

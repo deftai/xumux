@@ -1,5 +1,7 @@
 # xumux Extension: File Transfer
 
+> **Not part of the xumux specification.** This is an application-level document written against xumux 0.1. It is kept here temporarily and is due to move to deftai/vroom (promote to a profile if a second user appears). Anything it puts on channel 0 must move onto an application channel.
+
 **Status**: Draft
 **Extension ID**: `file-transfer`
 **Depends on**: xumux 0.1.0+
