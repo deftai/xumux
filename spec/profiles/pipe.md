@@ -45,6 +45,7 @@ Other types MUST cause CLOSE_CHANNEL `1002`.
 - After sending EOF, a side MUST NOT send DATA, but it keeps receiving.
 - Once a side has both sent and received EOF, or has sent or received RESET, it closes the channel with CLOSE_CHANNEL (`1000` after EOFs, `1001` after RESET).
 - Flow control ([core §6](../core.md#6-flow-control)) gives a pipe the same backpressure as the socket it represents. Implementations MUST only return credit as the bytes are actually written to their end.
+- A received EOF takes effect only after every earlier DATA on the channel has been written to the local end. Implementations MUST keep that write queue through the CLOSE_CHANNEL exchange, and close the local end only once it has drained.
 
 ## Mapping to sockets
 
@@ -53,7 +54,7 @@ Other types MUST cause CLOSE_CHANNEL `1002`.
 | bytes read | DATA |
 | read returns EOF (peer sent FIN) | EOF |
 | `ECONNRESET`, process exited abnormally | RESET |
-| received EOF | `shutdown(SHUT_WR)` on the local socket |
+| received EOF | `shutdown(SHUT_WR)` on the local socket, after earlier DATA has been written |
 
 ## Endpoint addresses
 

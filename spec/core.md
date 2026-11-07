@@ -353,6 +353,7 @@ Flow control stops a fast sender on one channel from exhausting the receiver's m
 - **Sending:** a sender MUST NOT send a frame whose payload exceeds its remaining credit on that channel. It may fragment a message to fit ([§7](#7-fragmentation)), or wait.
 - **Consumed bytes:** a payload byte counts as consumed when the application has taken the message containing it. Because `initialWindow` ≥ `maxMessageSize` ([§3.4](#34-limits)), a message being reassembled always fits within the window, and can always complete once earlier messages have been consumed.
 - **Granting:** a receiver returns credit for consumed bytes with WINDOW_UPDATE. While data keeps arriving it SHOULD batch updates, for example once consumed-but-unreturned bytes reach half of its `initialWindow`. It MUST NOT withhold credit indefinitely: whenever consumed-but-unreturned bytes are above zero and no further frames for the channel are waiting to be processed, it MUST send the update promptly.
+- **Closing:** a receiver MUST NOT send WINDOW_UPDATE entries for a channel after it has sent CLOSE_CHANNEL for it, and discards any credit it has not yet returned. Because channel 0 is ordered, every entry sent before that CLOSE_CHANNEL reaches the peer before it, and so before the ID can be reused ([§5.4](#54-closing-a-channel)). Credit therefore never carries over to a new channel with the same ID.
 - **Violations:** receiving more than the granted credit MUST cause CLOSE `4009` (FLOW_CONTROL_ERROR). So MUST an update that would raise a channel's available credit above 2³¹−1.
 
 ### 6.1 WINDOW_UPDATE (`0x07`)
@@ -407,7 +408,7 @@ Probe frames have the PROBE flag set, and they may be sent on channel 0 or on an
 - A receiver of a PING MUST reply with a PONG on the **same channel**, carrying the same token, as soon as possible. It MAY drop PINGs that arrive faster than it is willing to answer.
 - PING and PONG payloads MUST be exactly 4 bytes. Others MUST be discarded.
 - Probe frames are never delivered to the application, never count toward flow control, and are never fragmented. They MAY be sent while a fragmented message on the same channel is incomplete.
-- On a channel that is not yet open (for the opener), closing, or unknown, probes MUST NOT be sent and received probes MUST be discarded.
+- On a channel that is not yet open (for the opener), closing, or unknown, probes MUST NOT be sent and received probes MUST be discarded. The one exception is probes an opener holds under [§5.2](#52-opening-a-channel) because they overtook the ACK or WELCOME: those are answered once the ACK arrives, and discarded if a REJECT arrives.
 - Probes travel with the effective properties of their channel, so on an unreliable channel a probe can be lost, and the loss is part of the measurement.
 
 **Measurement:** the token belongs to the sender. The RECOMMENDED token is microseconds since the connection was established, modulo 2³². Then `RTT = (now − token) mod 2³²`. Implementations SHOULD smooth samples into SRTT/RTTVAR as in RFC 6298 and count unanswered probes as lost.

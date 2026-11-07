@@ -12,6 +12,8 @@ The client lists `webrtc-multichannel/1` in HELLO `extensions`. It only applies 
 
 A channel gets its own DataChannel ("dedicated") only if its opener creates one, and the opener SHOULD only do so when the requested properties are not both `reliable` and `ordered`. Channels without a dedicated DataChannel continue over the base `xumux` DataChannel. The control channel always stays on the base DataChannel.
 
+The opener signals a dedicated DataChannel by adding `"dataChannel": true` to the channel request (the OPEN_CHANNEL payload, or the channel's entry in HELLO). A request without it runs over the base DataChannel, and the responder answers it as usual without waiting. A DataChannel labelled `xumux/<id>` for a channel whose request did not set `dataChannel` MUST be closed and ignored.
+
 ## Labels
 
 A dedicated DataChannel has the label `xumux/<id>`, where `<id>` is the decimal xumux channel ID (`xumux/3`), and its protocol is `xumux`.
@@ -31,7 +33,7 @@ The effective properties reported in CHANNEL_ACK or WELCOME are the dedicated Da
 
 ## Opening
 
-**Channels in HELLO.** The client MAY create dedicated DataChannels for its HELLO channels before sending HELLO, in the same SDP offer. Then:
+**Channels in HELLO.** The client MAY create dedicated DataChannels for its HELLO channels before sending HELLO, in the same SDP offer, and marks those channels with `"dataChannel": true`. Then:
 
 - If the server accepts the extension, it uses those DataChannels for the matching channels.
 - If the server does not accept it, the server MUST ignore them (it MAY close them), and those channels run over the base DataChannel with reliable, ordered properties. The client closes any it has left after reading WELCOME.
@@ -40,7 +42,7 @@ The effective properties reported in CHANNEL_ACK or WELCOME are the dedicated Da
 **OPEN_CHANNEL after the handshake.**
 
 1. The opener creates `xumux/<id>`, then sends OPEN_CHANNEL on the base DataChannel.
-2. The responder MUST NOT send CHANNEL_ACK until that DataChannel is open on its side. If the DataChannel has not appeared within 10 seconds, it rejects with `4010`.
+2. If the request has `"dataChannel": true`, the responder MUST NOT send CHANNEL_ACK until that DataChannel is open on its side. If the DataChannel has not appeared within 10 seconds, it rejects with `4010`. Requests without `dataChannel` are answered immediately.
 3. To reject, the responder sends CHANNEL_REJECT and closes the DataChannel.
 
 ## Framing on a dedicated DataChannel
