@@ -1,5 +1,7 @@
 # xumux Extension: Port Forwarding
 
+> **Not part of the xumux specification.** This is an application-level document written against xumux 0.1. It is kept here temporarily and is due to move to a profile built on [pipe/1](../../spec/profiles/pipe.md), plus a forwarding request for remote forwards. Anything it puts on channel 0 must move onto an application channel.
+
 **Status**: Draft
 **Extension ID**: `port-forwarding`
 **Depends on**: xumux 0.1.0+

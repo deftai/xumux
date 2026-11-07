@@ -1,8 +1,13 @@
 # xumux Extension: Session Resume
 
+> **Not yet updated for xumux 0.2.** The extension name is now `session-resume/1` and it requires core 0.2. Open issues:
+> - "DATA messages" and "the Reserved byte" are SocketPipe leftovers. Sequence numbers need a 0.2 design that defines how they interact with fragments, probe frames (never sequenced) and flow control (credit must be re-synchronised on resume).
+> - RESUME_REQUEST replaces HELLO, so it must carry `version` and must be subject to the HELLO timeout.
+> - The 4100–4103 codes fit the extension range in the [registry](../registry.md).
+
 **Status**: Draft
-**Extension ID**: `session-resume`
-**Depends on**: xumux 0.1.0+
+**Extension ID**: `session-resume/1`
+**Depends on**: xumux 0.2
 
 ## Overview
 
@@ -23,17 +28,17 @@ Clients advertise support in HELLO:
 
 ```json
 {
-  "version": [0, 1, 0],
-  "extensions": ["session-resume"],
+  "version": [0, 2, 0],
+  "extensions": ["session-resume/1"],
   "channels": [...]
 }
 ```
 
-If the server supports it, `"session-resume"` appears in the WELCOME `extensions` array.
+If the server supports it, `"session-resume/1"` appears in the WELCOME `extensions` array.
 
 ## Additional Control Messages (on channel 0)
 
-When `session-resume` is negotiated, the following additional control channel message types are available:
+When `session-resume/1` is negotiated, the following additional control channel message types are available:
 
 | Type | Name | Direction | Description |
 |------|------|-----------|-------------|
@@ -43,7 +48,7 @@ When `session-resume` is negotiated, the following additional control channel me
 
 ### SESSION_ID (0x30)
 
-Sent by server on channel 0 immediately after WELCOME when `session-resume` is negotiated.
+Sent by server on channel 0 immediately after WELCOME when `session-resume/1` is negotiated.
 
 **Payload** (JSON):
 ```json
@@ -101,7 +106,7 @@ Failure:
 
 ## Sequence Numbers
 
-When `session-resume` is active, DATA messages on all channels include a connection-wide sequence number. This is carried in the Reserved byte of the frame header (repurposed when this extension is active) or as a prefix to the payload:
+When `session-resume/1` is active, DATA messages on all channels include a connection-wide sequence number. This is carried in the Reserved byte of the frame header (repurposed when this extension is active) or as a prefix to the payload:
 
 **Extended DATA payload** (when session-resume active):
 ```
@@ -133,8 +138,8 @@ sequenceDiagram
     participant S as Server
 
     Note over C,S: Initial connection
-    C->>S: HELLO {extensions: ["session-resume"], ...}
-    S->>C: WELCOME {extensions: ["session-resume"], ...}
+    C->>S: HELLO {extensions: ["session-resume/1"], ...}
+    S->>C: WELCOME {extensions: ["session-resume/1"], ...}
     S->>C: SESSION_ID {sessionId: "abc123", resumeTimeout: 300}
 
     C->>S: DATA (seq=1)

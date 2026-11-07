@@ -1,5 +1,12 @@
 # xumux on QUIC / WebTransport
 
+> **Experimental: not yet updated for xumux 0.2.** This binding still describes 0.1 behaviour. Known gaps:
+> - Channel IDs and stream assignment use the 0.1 model, where the server assigns IDs and `requestId` correlates. In 0.2 the opener chooses the ID ([core §5.1](../core.md#51-channel-ids)), so the stream an opener creates can be identified from its first frame.
+> - Unreliable channels on datagrams are not flow-controlled in 0.2. That matches this document, but needs restating against [core §6](../core.md#6-flow-control).
+> - PING/PONG are probe frames in 0.2 ([core §8](../core.md#8-probes-and-keepalive)), so probes on a datagram channel go out as datagrams.
+>
+> Implement the [websocket](websocket.md) or [webrtc](webrtc.md) binding first.
+
 **Status**: Draft
 **Binding ID**: `quic`
 
@@ -70,13 +77,13 @@ graph TB
         direction TB
 
         subgraph "Bidirectional Streams (reliable, ordered)"
-            S0["Stream 0: omux/control"]
-            S1["Stream 1: omux/button"]
+            S0["Stream 0: xumux/control"]
+            S1["Stream 1: xumux/button"]
             S2["Stream 2: (dynamic channels)"]
         end
 
         subgraph "Datagrams (unreliable, unordered)"
-            D1["omux/pointer events"]
+            D1["xumux/pointer events"]
         end
     end
 
@@ -146,7 +153,7 @@ sequenceDiagram
     S->>C: [stream 0] WELCOME {channels: [{name: "control", id: 0, streamId: 0}, ...]}
 
     Note over C,S: 3. Server opens additional streams per channel
-    S->>C: Open bidirectional stream 2 → omux/button (id: 2)
+    S->>C: Open bidirectional stream 2 → xumux/button (id: 2)
 
     Note over C,S: 4. Application data flows
     C->>S: [stream 0] Control messages (JSON)
@@ -340,7 +347,7 @@ This is impossible with WebRTC DataChannels (requires ICE restart) and TCP/WebSo
 WebTransport URLs use HTTPS:
 
 ```
-https://host:port/omux
+https://host:port/xumux
 https://host:port/vroom
 ```
 
