@@ -77,6 +77,8 @@ xumux does not define application messages, transport setup or encryption. Those
 | Profiles | no, they define one channel's contents | Versioned separately |
 | Applications | no | Their own repositories |
 
+Tiers say who owns a document and how stable it is. For where code sits on the data path (transport, framing, session, extensions, profiles, applications), see the [I/O stack design proposal](docs/design/io-stack.md).
+
 ## Implementations and tools
 
 | Project | Language | Status |
