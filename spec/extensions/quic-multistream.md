@@ -21,8 +21,9 @@ The opener chooses each channel's **path** with a `quic` field in the channel re
 | `"datagram"` | QUIC datagrams | `reliable: false, ordered: false, maxRetransmits: 0` |
 
 - An opener SHOULD request `"datagram"` only for channels that ask for `reliable: false`, and MUST NOT request it unless the peer supports datagrams (QUIC transport parameter `max_datagram_frame_size` > 0, or WebTransport datagrams available).
-- The responder MAY place a channel on the session stream instead of the requested path. When the request had a `quic` field, its CHANNEL_ACK (or WELCOME entry) MUST include `quic` with the path actually used (`"session"`, `"stream"` or `"datagram"`), along with the effective properties. If it chose the session stream for a `"stream"` request, it resets the opener's stream.
+- The responder MAY place a channel on the session stream instead of the requested path. When the request had a `quic` field, its CHANNEL_ACK (or WELCOME entry) MUST include `quic` with the path actually used (`"session"`, `"stream"` or `"datagram"`), along with the effective properties. If it chose the session stream for a `"stream"` request, it need not wait for the opener's stream ([§3.2](#32-opening)), and resets that stream if it arrives.
 - Channel 0 always uses the session stream.
+- **Frames must arrive on their channel's path.** A receiver MUST discard a frame (data or probe) that arrives on a path other than the one its channel uses: a datagram for a channel on a stream, a frame on the session stream for a channel with a dedicated stream or on datagrams, and any datagram for channel 0.
 
 ## 3. Dedicated streams
 
@@ -30,18 +31,18 @@ The opener chooses each channel's **path** with a `quic` field in the channel re
 
 QUIC streams carry no label, and WebTransport does not expose stream IDs, so the channel is identified by the stream's **first frame**:
 
-- The opener creates a new bidirectional stream and immediately writes, as the stream's first frame, a **binding PING**: a PING ([core §8.1](../core.md#81-ping-0x10-and-pong-0x11)) whose Channel field is the channel's ID. Writing it makes the stream visible to the peer, and the opener chooses the ID ([core §5.1](../core.md#51-channel-ids)), so the stream identifies its channel the moment it arrives. This PING is exempt from the rule that an opener sends no probes before CHANNEL_ACK.
-- A stream whose first frame is not a PING, or whose PING names an ID of the wrong parity, or an ID whose current channel already has a dedicated stream, MUST be reset and ignored.
+- The opener creates a new bidirectional stream and immediately writes, as the stream's first frame, a **binding PING**: a PING ([core §8.1](../core.md#81-ping-0x10-and-pong-0x11)) whose Channel field is the channel's ID, and whose token the opener also puts in the request as `"streamToken"`. The token MUST differ from the token of any earlier stream the opener created for the same ID in this connection. The responder matches a stream to a request by **ID and token**, so a delayed stream from an earlier, rejected attempt can never be bound to a later request with the same ID. Writing it makes the stream visible to the peer, and the opener chooses the ID ([core §5.1](../core.md#51-channel-ids)), so the stream identifies its channel the moment it arrives. This PING is exempt from the rule that an opener sends no probes before CHANNEL_ACK.
+- A stream whose first frame is not a PING, whose PING names an ID of the wrong parity, or whose ID and token match no pending or future request (see the holding rule in [§3.2](#32-opening)), MUST be reset and ignored.
 - The responder answers the binding PING with a PONG on the stream after it has sent CHANNEL_ACK. The pair is an ordinary RTT sample.
 
 ### 3.2 Opening
 
 1. The opener creates the stream and writes the binding PING, then sends OPEN_CHANNEL (with `"quic": "stream"`) on the session stream. The two can arrive in either order.
-2. The responder MUST NOT send CHANNEL_ACK until the stream has arrived. If it has not arrived within 10 seconds, the responder rejects the channel with `4010`. A stream that arrives before its OPEN_CHANNEL is held for up to 10 seconds, then reset. The responder MAY limit how many streams it holds this way to its channel limit.
+2. To accept the channel on its dedicated stream, the responder MUST NOT send CHANNEL_ACK until the stream with the matching ID and token has arrived. If it has not arrived within 10 seconds, the responder either rejects the channel with `4010` or accepts it on the session stream (`"quic": "session"`). It MAY place the channel on the session stream at once, without waiting, for example when it is at its stream limit. A stream that arrives before its OPEN_CHANNEL is held for up to 10 seconds, then reset. The responder MAY limit how many streams it holds this way to its channel limit. A stream that arrives for a request that was already rejected or placed on the session stream is reset.
 3. To reject, the responder sends CHANNEL_REJECT and resets the stream.
 4. After CHANNEL_ACK, the responder sends on the stream's other direction. Frames that overtake the ACK are held by the opener, as [core §5.2](../core.md#52-opening-a-channel) already requires.
 
-**Channels in HELLO.** The client MAY create dedicated streams for its HELLO channels right after opening the session stream. The session stream MUST be the first stream the client opens. If the server accepts the extension, it uses them, and waits for them before WELCOME as in step 2. If it does not accept the extension, it resets them ([quic §2](../bindings/quic.md#2-the-session-stream)), and those channels run over the session stream.
+**Channels in HELLO.** The client MAY create dedicated streams for its HELLO channels right after opening the session stream. Streams can arrive in any order, so the server finds the session stream by its first frame ([quic §2](../bindings/quic.md#2-the-session-stream)) and holds streams that start with a binding PING until it has read HELLO. If the server accepts the extension, it uses them, and waits for them before WELCOME as in step 2. If it does not accept the extension, it resets them, and those channels run over the session stream.
 
 ### 3.3 Framing on a dedicated stream
 

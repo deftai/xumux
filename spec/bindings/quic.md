@@ -25,10 +25,11 @@ This document has two parts, following the [webrtc](webrtc.md) precedent:
 
 ## 2. The session stream
 
-- The client opens a bidirectional stream and sends HELLO as the first bytes on it. This **session stream** carries channel 0 and every channel that does not have a path of its own.
-- In native QUIC this is the first client-initiated bidirectional stream (stream ID 0), but implementations MUST identify it as "the first bidirectional stream the client opened", not by number.
+- The client opens a bidirectional stream and sends HELLO as the first bytes on it. This **session stream** carries channel 0 and every channel that does not have a path of its own. The client SHOULD open it before any other stream.
+- The server identifies the session stream by its **first frame**: the first client-initiated bidirectional stream whose first frame is on channel 0 (HELLO, or an extension-defined first frame such as RESUME). Streams can arrive out of order, and WebTransport exposes neither stream IDs nor creation order, so arrival order and stream numbers MUST NOT be used. Until the session stream is found, the server MAY hold other client streams, bounded by count and by the HELLO timeout. Its HELLO timeout ([core §3.1](../core.md#31-rules)) runs from the QUIC or WebTransport session being established.
+- A second stream whose first frame is on channel 0 MUST cause CLOSE `1002`.
 - Frames are parsed from the byte stream exactly as in the [TCP binding](tcp.md#stream-framing): read 8 header bytes, apply [core §2.3](../core.md#23-frame-validation), read Payload Length bytes. Implementations MUST NOT assume that one read or one WebTransport chunk is one frame.
-- Without an extension that defines them, any other stream the peer opens MUST be refused (QUIC `STOP_SENDING` and `RESET_STREAM`, or the WebTransport equivalent), and datagrams MUST be discarded.
+- Without an extension that defines them, any other stream the peer opens MUST be refused once the handshake has completed (or immediately, if it starts with anything other than a frame an extension could claim) (QUIC `STOP_SENDING` and `RESET_STREAM`, or the WebTransport equivalent), and datagrams MUST be discarded.
 
 ## 3. Channel properties
 
