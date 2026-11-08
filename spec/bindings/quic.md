@@ -1,442 +1,78 @@
-# xumux on QUIC / WebTransport
-
-> **Experimental: not yet updated for xumux 0.2.** This binding still describes 0.1 behaviour. Known gaps:
-> - Channel IDs and stream assignment use the 0.1 model, where the server assigns IDs and `requestId` correlates. In 0.2 the opener chooses the ID ([core §5.1](../core.md#51-channel-ids)), so the stream an opener creates can be identified from its first frame.
-> - Unreliable channels on datagrams are not flow-controlled in 0.2. That matches this document, but needs restating against [core §6](../core.md#6-flow-control).
-> - PING/PONG are probe frames in 0.2 ([core §8](../core.md#8-probes-and-keepalive)), so probes on a datagram channel go out as datagrams.
->
-> Implement the [websocket](websocket.md) or [webrtc](webrtc.md) binding first.
-
-**Status**: Draft
-**Binding ID**: `quic`
-
-## Overview
-
-This binding defines how xumux operates over QUIC streams, accessed via the **WebTransport** API in browsers or native QUIC libraries server-side. QUIC is the **optimal transport** for xumux — it provides UDP-based delivery, native multiplexed streams with independent flow control, built-in TLS 1.3 encryption, 0-RTT connection resumption, and no head-of-line blocking across streams.
-
-WebTransport is the browser API that exposes QUIC streams and datagrams to JavaScript. This binding covers both native QUIC (server-to-server, CLI) and WebTransport (browser clients).
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'clusterBkg': '#c0c0c0', 'clusterBorder': '#606060'}}}%%
-graph TB
-    subgraph "Browser Client"
-        WT["WebTransport API"]
-    end
-
-    subgraph "Native Client"
-        NQ["QUIC library<br/>(quinn, quiche, etc.)"]
-    end
-
-    subgraph "Server"
-        S["QUIC endpoint"]
-    end
-
-    WT -->|"QUIC (UDP)"| S
-    NQ -->|"QUIC (UDP)"| S
-```
-
-## Why QUIC?
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'clusterBkg': '#c0c0c0', 'clusterBorder': '#606060'}}}%%
-graph LR
-    subgraph "WebRTC DataChannel"
-        W1["ICE negotiation ⏱️"]
-        W2["STUN/TURN required"]
-        W3["DTLS + SCTP"]
-        W4["Complex setup"]
-    end
-
-    subgraph "QUIC / WebTransport"
-        Q1["Direct connect 🚀"]
-        Q2["No STUN/TURN"]
-        Q3["TLS 1.3 built-in"]
-        Q4["0-RTT resumption"]
-    end
-```
-
-| Feature | WebRTC DC | QUIC/WebTransport | TCP/WebSocket |
-|---------|-----------|-------------------|---------------|
-| Transport | UDP (via SCTP) | UDP (native) | TCP |
-| Encryption | DTLS | TLS 1.3 | TLS 1.2/1.3 |
-| Setup latency | High (ICE+DTLS+SCTP) | 1-RTT (0-RTT on resume) | 1-RTT (TCP) + 1-RTT (TLS) |
-| Stream multiplexing | Per-DataChannel | Per-stream (native) | None (single stream) |
-| Head-of-line blocking | No (per-DC) | No (per-stream) | **Yes** (all channels) |
-| NAT traversal | ICE/STUN/TURN | Direct (HTTP/3 ports) | Direct |
-| Unreliable delivery | maxRetransmits=0 | Datagrams | Not possible |
-| Connection migration | No | **Yes** (IP change survives) | No |
-| 0-RTT resumption | No | **Yes** | No (TLS 1.3 partial) |
-| Browser support | Universal | Chrome, Edge (Safari/Firefox WIP) | Universal |
-
-## Architecture
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'clusterBkg': '#c0c0c0', 'clusterBorder': '#606060'}}}%%
-graph TB
-    subgraph "QUIC Connection"
-        direction TB
-
-        subgraph "Bidirectional Streams (reliable, ordered)"
-            S0["Stream 0: xumux/control"]
-            S1["Stream 1: xumux/button"]
-            S2["Stream 2: (dynamic channels)"]
-        end
-
-        subgraph "Datagrams (unreliable, unordered)"
-            D1["xumux/pointer events"]
-        end
-    end
-
-    C["Client"] <--> S0
-    C <--> S1
-    C <--> S2
-    C <-.-> D1
-```
-
-### Channel Mapping
-
-QUIC provides two primitives that map perfectly to xumux:
-
-| xumux Channel Property | QUIC Primitive | Mapping |
-|--------------------------|---------------|---------|
-| Reliable + Ordered | **Bidirectional Stream** | 1:1 — each channel gets its own QUIC stream |
-| Unreliable + Unordered | **Datagram** | Channel byte in header disambiguates |
-
-This is cleaner than WebRTC DataChannels because QUIC streams are lightweight (just a stream ID, no negotiation) and can be created/destroyed instantly.
-
-### Stream Creation Rules
-
-**Who opens which streams:**
-
-1. The **client** opens the first bidirectional stream (stream 0) and sends HELLO on it. This is always the control channel.
-2. After processing HELLO, the **server** opens bidirectional streams for each accepted reliable channel and includes `streamId` in WELCOME.
-3. For dynamic channels (OPEN_CHANNEL after handshake), the **requesting side** opens the new QUIC stream, then sends OPEN_CHANNEL on the control stream. CHANNEL_ACK confirms with the `streamId`.
-
-**Stream identification:** Before WELCOME is processed, the receiver cannot know which stream corresponds to which channel. Therefore:
-- Stream 0 is **always** the control channel (by convention, like WebRTC's negotiated DataChannel ID 0).
-- All other streams MUST include the correct Channel byte in the xumux frame header. The receiver uses the Channel byte to identify the channel, cross-referencing with the `streamId` mappings from WELCOME.
-- If a frame arrives on an unknown stream with an unknown Channel byte, the receiver MUST send ERROR (code 4003, CHANNEL_NOT_FOUND) on the control stream.
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'clusterBkg': '#c0c0c0', 'clusterBorder': '#606060'}}}%%
-graph TD
-    subgraph "xumux Channel Types"
-        R["Reliable + Ordered<br/>(control, button, data)"]
-        U["Unreliable + Unordered<br/>(pointer, sensor data)"]
-    end
-
-    subgraph "QUIC Primitives"
-        BS["Bidirectional Stream<br/>per-stream flow control<br/>per-stream ordering<br/>lightweight creation"]
-        DG["Datagram<br/>fire-and-forget<br/>no ordering<br/>size-limited"]
-    end
+# xumux on QUIC and WebTransport
 
-    R --> BS
-    U --> DG
-```
-
-## Connection Flow
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
-sequenceDiagram
-    participant C as Client
-    participant S as Server
-
-    Note over C,S: 1. QUIC handshake (1-RTT, or 0-RTT on resume)
-    C->>S: QUIC ClientHello + TLS 1.3
-    S->>C: QUIC ServerHello + TLS 1.3
-    Note over C,S: Connection established, encrypted
+**Status**: Experimental, design draft, not for implementation | **Binding ID**: `quic` | **Core**: [0.2](../core.md)
 
-    Note over C,S: 2. Open control stream
-    C->>S: Open bidirectional stream 0
-    C->>S: [stream 0] HELLO {version, channels, ...}
-    S->>C: [stream 0] WELCOME {channels: [{name: "control", id: 0, streamId: 0}, ...]}
+> This is a proposal that replaces the 0.1-era text. Normative keywords mark what the draft decides. Undecided points are listed in [Open questions](#open-questions), each with a recommendation. Implement the [websocket](websocket.md) or [webrtc](webrtc.md) binding first.
 
-    Note over C,S: 3. Server opens additional streams per channel
-    S->>C: Open bidirectional stream 2 → xumux/button (id: 2)
+QUIC gives an encrypted (TLS 1.3), UDP-based connection that survives address changes (connection migration), with cheap independent streams and optional unreliable datagrams (RFC 9221). WebTransport exposes the same streams and datagrams to browsers over HTTP/3.
 
-    Note over C,S: 4. Application data flows
-    C->>S: [stream 0] Control messages (JSON)
-    C->>S: [stream 2] Button events (binary)
-    C-->>S: [datagram] Pointer events (binary)
+This document has two parts, following the [webrtc](webrtc.md) precedent:
 
-    Note over C,S: 5. Dynamic channel
-    C->>S: [stream 0] OPEN_CHANNEL {name: "file-xfer"}
-    S->>C: [stream 0] CHANNEL_ACK {id: 4, streamId: 4}
-    Note over C,S: Stream 4 now carries file-xfer data
+- **The base binding** (this document) runs the whole xumux connection over **one** bidirectional QUIC stream. It is the TCP binding without magic bytes, with migration for free. The TypeScript [libxumux](https://github.com/deftai/libxumux) `QuicAdapter` already works this way.
+- **[`quic-multistream/1`](../extensions/quic-multistream.md)**, a negotiated extension, gives individual channels their own QUIC stream (no head-of-line blocking between channels) or puts them on datagrams (natively unreliable and unordered).
 
-    Note over C,S: 6. Close
-    C->>S: [stream 0] CLOSE
-    S->>C: [stream 0] CLOSE
-    Note over C,S: QUIC connection closed
-```
+## 1. Transport
 
-### 0-RTT Connection Resumption
+| | Native QUIC | WebTransport |
+|---|---|---|
+| Identification | ALPN `xumux` | HTTP/3 extended CONNECT to the endpoint path (default `/xumux`). If WebTransport subprotocol negotiation is available, the protocol is `xumux`. |
+| Streams | QUIC bidirectional streams | WebTransport bidirectional streams |
+| Datagrams | RFC 9221 DATAGRAM frames | WebTransport datagrams |
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
-sequenceDiagram
-    participant C as Client
-    participant S as Server
+- No magic bytes are sent. ALPN or the WebTransport endpoint identifies xumux.
+- Encryption is always present. HELLO `auth` is allowed.
+- Nothing in this binding depends on QUIC stream IDs, because the browser WebTransport API does not expose them.
 
-    Note over C,S: First connection (1-RTT)
-    C->>S: ClientHello
-    S->>C: ServerHello + session ticket
-    Note over C: Stores session ticket
+## 2. The session stream
 
-    Note over C,S: Reconnection (0-RTT) ⚡
-    C->>S: ClientHello + early data + HELLO
-    Note over S: Validates ticket, processes HELLO immediately
-    S->>C: ServerHello + WELCOME
-    Note over C,S: Data flowing with ZERO round trips of setup latency
-```
+- The client opens a bidirectional stream and sends HELLO as the first bytes on it. This **session stream** carries channel 0 and every channel that does not have a path of its own. The client SHOULD open it before any other stream.
+- The server identifies the session stream by its **first frame**: the first client-initiated bidirectional stream whose first frame is on channel 0 (HELLO, or an extension-defined first frame such as RESUME). Streams can arrive out of order, and WebTransport exposes neither stream IDs nor creation order, so arrival order and stream numbers MUST NOT be used. Until the session stream is found, the server MAY hold other client streams, bounded by count and by the HELLO timeout. Its HELLO timeout ([core §3.1](../core.md#31-rules)) runs from the QUIC or WebTransport session being established.
+- A second stream whose first frame is on channel 0 MUST cause CLOSE `1002`.
+- Frames are parsed from the byte stream exactly as in the [TCP binding](tcp.md#stream-framing): read 8 header bytes, apply [core §2.3](../core.md#23-frame-validation), read Payload Length bytes. Implementations MUST NOT assume that one read or one WebTransport chunk is one frame.
+- Without an extension that defines them, any other stream the peer opens MUST be refused once the handshake has completed (or immediately, if it starts with anything other than a frame an extension could claim) (QUIC `STOP_SENDING` and `RESET_STREAM`, or the WebTransport equivalent), and datagrams MUST be discarded.
 
-0-RTT is particularly valuable for VROOM-Graphical — reconnecting after a network glitch resumes the interactive session instantly.
+## 3. Channel properties
 
-**Security note**: 0-RTT data is replayable. xumux HELLO is idempotent, so this is safe. Application protocols MUST NOT send non-idempotent data in 0-RTT.
+On the session stream every channel is effectively `reliable: true, ordered: true`, which CHANNEL_ACK and WELCOME MUST report. Flow control ([core §6](../core.md#6-flow-control)) and fragmentation ([core §7](../core.md#7-fragmentation)) apply exactly as on TCP. Head-of-line blocking between channels applies too, so senders SHOULD follow the scheduling guidance in core §7.
 
-## WebTransport API Mapping
+QUIC's own stream flow control also applies to the session stream. It limits the stream as a whole and does not replace xumux credit, which is what stops one channel from starving the others on a shared stream.
 
-For browser clients using the WebTransport API:
+## 4. Lifecycle
 
-```javascript
-// Connect
-const transport = new WebTransport("https://agent.example.com:4433/vroom");
-await transport.ready;
+1. QUIC handshake (or WebTransport session establishment).
+2. The client opens the session stream. HELLO / WELCOME.
+3. Application data.
+4. The xumux CLOSE exchange on the session stream, then each side ends its send direction (FIN). The connection is then closed with QUIC application error code `0` (WebTransport: `close({closeCode: 0})`).
 
-// Control channel → bidirectional stream
-const controlStream = await transport.createBidirectionalStream();
-const controlWriter = controlStream.writable.getWriter();
-const controlReader = controlStream.readable.getReader();
+If the session stream is reset, or ends without a CLOSE exchange, or the QUIC connection closes, the xumux connection is dead (code `1001`).
 
-// Send HELLO on control stream
-controlWriter.write(encodexumuxFrame(0, 0x01, helloPayload));
+## 5. Keepalive and migration
 
-// Button channel → another bidirectional stream
-const buttonStream = await transport.createBidirectionalStream();
-const buttonWriter = buttonStream.writable.getWriter();
+Use xumux keepalive ([core §8.2](../core.md#82-keepalive)). QUIC PING and idle timeout MAY also be used, but they are invisible to xumux. The QUIC idle timeout SHOULD be longer than xumux `pingInterval + pingTimeout`, so xumux is what decides the connection is dead.
 
-// Pointer channel → datagrams (unreliable)
-const datagramWriter = transport.datagrams.writable.getWriter();
-const datagramReader = transport.datagrams.readable.getReader();
+Connection migration is transparent to xumux. After a migration the path is probably different, so RTT estimates from probes ([core §8.1](../core.md#81-ping-0x10-and-pong-0x11)) SHOULD be allowed to re-converge quickly. Implementations that see a migration event MAY reset their smoothing.
 
-// Send mouse move via datagram
-datagramWriter.write(encodexumuxFrame(1, 0x01, mousePayload));
+## 6. 0-RTT
 
-// Send key press via reliable stream
-buttonWriter.write(encodexumuxFrame(2, 0x12, keyPayload));
-```
+0-RTT early data can be replayed by an attacker. HELLO is not idempotent in general: channels in HELLO can have side effects (a [`pipe/1`](../profiles/pipe.md) channel connects to a target), and `auth` might be single-use.
 
-### WebTransport ↔ xumux Mapping
+- A client MAY send HELLO in 0-RTT only if the HELLO opens no channels and the application has decided that replaying it is harmless.
+- A server MUST NOT act on anything in 0-RTT data that is not safe to repeat. A server that cannot tell SHOULD reject 0-RTT.
+- RESUME ([session-resume](../extensions/session-resume.md)) MUST NOT be sent in 0-RTT.
 
-| WebTransport Concept | xumux Concept |
-|---------------------|-----------------|
-| `createBidirectionalStream()` | Open reliable+ordered channel |
-| `datagrams.writable` | Send on unreliable+unordered channel |
-| `datagrams.readable` | Receive unreliable+unordered messages |
-| Stream close | CLOSE_CHANNEL |
-| `transport.close()` | CLOSE |
-| Session ticket / 0-RTT | Reconnection (no xumux equivalent needed) |
+## 7. Endpoint
 
-## Frame Format
+- Native QUIC: the port is chosen by the application. URI form for tools such as `xumcat`: `quic+xumux://host:port`.
+- WebTransport: `https://host:port/xumux`. Applications MAY use sub-paths, such as `/xumux/vroom`. Port 443 (shared with HTTPS) or any other port.
+- WebTransport requires a valid certificate. For development, browsers allow pinning with `serverCertificateHashes`.
 
-### On Streams (reliable channels)
+## 8. Fallback
 
-Same as core xumux. Since QUIC streams are byte streams (like TCP), frames must be parsed using the Length field:
+QUIC is often blocked (UDP filtered) and WebTransport is not available in every browser. Clients SHOULD fall back to WebRTC or WebSocket if no QUIC connection is established within 5 seconds. The application sees the same channels on any binding.
 
-```
-[Channel: 2][Type: 1][Flags: 1][Length: 4][Payload: variable]
-```
+## Open questions
 
-Each QUIC stream carries one xumux channel. The Channel field is redundant (the stream identity determines the channel) but MUST be present for cross-transport compatibility.
-
-**Stream framing note**: Unlike WebSocket/DataChannel (which provide message boundaries), QUIC streams are byte streams. Implementations MUST parse frames by reading the 8-byte header, then reading exactly `Length` bytes of payload — identical to the TCP binding.
-
-However, WebTransport's `readable`/`writable` streams in browsers operate on `Uint8Array` chunks, not raw bytes. Implementations SHOULD write one complete xumux frame per `write()` call and handle partial reads on the receive side.
-
-### On Datagrams (unreliable channels)
-
-QUIC datagrams are self-contained — each datagram is one complete message. The frame format is the same, but:
-
-- Length field is redundant (datagram size is known) — MUST still be present
-- FRAGMENT flags MUST NOT be used (datagrams cannot be reassembled reliably)
-
-```
-One QUIC datagram = one xumux frame = one pointer/sensor event
-```
-
-Datagram max size depends on the QUIC path MTU. The server advertises `max_datagram_frame_size` during handshake. xumux pointer events are 12 bytes total (8 header + 4 payload), well within any MTU.
-
-## Channel-to-Stream Assignment
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'clusterBkg': '#c0c0c0', 'clusterBorder': '#606060'}}}%%
-graph TD
-    subgraph "WELCOME Response"
-        W["channels: [<br/>  {name: 'control', id: 0, streamId: 0},<br/>  {name: 'pointer', id: 1, transport: 'datagram'},<br/>  {name: 'button', id: 2, streamId: 2}<br/>]"]
-    end
-
-    subgraph "QUIC Primitives"
-        S0["Stream 0 → control"]
-        S2["Stream 2 → button"]
-        DG["Datagrams → pointer<br/>(Channel byte = 1)"]
-    end
-
-    W --> S0
-    W --> S2
-    W --> DG
-```
-
-The WELCOME message in the QUIC binding adds two optional fields to each channel assignment:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `streamId` | number | QUIC stream ID for this channel (reliable channels) |
-| `transport` | `"stream"` \| `"datagram"` | Which QUIC primitive. Default: `"stream"` |
-
-Channels with `"transport": "datagram"` share the datagram pipe and are disambiguated by the Channel byte in the xumux header.
-
-## Dynamic Channels
-
-Creating a new channel is simpler on QUIC than any other transport:
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
-sequenceDiagram
-    participant C as Client
-    participant S as Server
-
-    C->>S: [stream 0] OPEN_CHANNEL {requestId: 1, name: "screen-share", reliable: true}
-    Note over S: Opens new QUIC bidirectional stream
-    S->>C: [stream 0] CHANNEL_ACK {requestId: 1, id: 5, streamId: 6}
-    Note over C,S: Stream 6 now carries "screen-share"<br/>Instantly available, no negotiation
-
-    Note over C,S: Later...
-    C->>S: [stream 0] CLOSE_CHANNEL {id: 5}
-    Note over S: Closes QUIC stream 6
-    Note over C,S: Stream freed, channel ID freed
-```
-
-QUIC streams are cheap — creating one is just sending a frame with a new stream ID. No round-trip negotiation at the transport level. The OPEN_CHANNEL/CHANNEL_ACK round-trip is purely at the xumux level for both sides to agree on the channel semantics.
-
-## Connection Migration
-
-QUIC supports connection migration — if the client's IP address changes (e.g., switching from WiFi to cellular), the QUIC connection survives. This is transparent to xumux.
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
-sequenceDiagram
-    participant C as Client
-    participant S as Server
-
-    Note over C: IP: 192.168.1.50
-    C->>S: [pointer] MOUSE_MOVE x=100 y=200
-    C->>S: [button] KEY_DOWN key="a"
-
-    Note over C: WiFi → Cellular<br/>IP: 10.0.0.42
-    Note over C,S: QUIC connection migrates automatically<br/>No reconnection, no re-handshake
-
-    C->>S: [pointer] MOUSE_MOVE x=150 y=250
-    Note over S: Same connection, new path
-```
-
-This is impossible with WebRTC DataChannels (requires ICE restart) and TCP/WebSocket (requires full reconnection + re-handshake).
-
-## Endpoint Convention
-
-WebTransport URLs use HTTPS:
-
-```
-https://host:port/xumux
-https://host:port/vroom
-```
-
-Default port: **4433** (common WebTransport convention) or **443** (shared with HTTPS).
-
-WebTransport requires a valid TLS certificate (self-signed certificates can be allowed via `serverCertificateHashes` in the browser API).
-
-## Server Requirements
-
-- MUST support HTTP/3 (QUIC)
-- MUST support WebTransport protocol negotiation
-- MUST support bidirectional streams
-- SHOULD support datagrams (for unreliable channels)
-- If datagrams are not supported, unreliable channels fall back to streams (with a warning that ordering/reliability semantics change)
-- MUST advertise supported xumux channels in WELCOME with stream/datagram assignments
-
-## Client Requirements
-
-- Browser clients MUST use the WebTransport API
-- Native clients MAY use any QUIC library (quinn/Rust, quiche/C, aioquic/Python)
-- Clients MUST handle datagram unavailability gracefully (fall back to streams)
-- Clients SHOULD implement 0-RTT for fast reconnection
-
-## Fallback Chain
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'clusterBkg': '#c0c0c0', 'clusterBorder': '#606060'}}}%%
-graph TD
-    A{QUIC/WebTransport<br/>available?}
-    A -->|Yes| Q["✅ QUIC<br/>Best performance"]
-    A -->|No| B{WebRTC<br/>available?}
-    B -->|Yes| W["✅ WebRTC DataChannels<br/>Universal browser support"]
-    B -->|No| C["✅ WebSocket<br/>Works everywhere"]
-
-    style Q fill:#909090,color:#000000
-    style W fill:#808080,color:#000000
-    style C fill:#707070,color:#000000
-```
-
-Recommended client behavior:
-1. Try QUIC/WebTransport first (fastest setup, best performance)
-2. Fall back to WebRTC DataChannels (universal browser support, NAT traversal)
-3. Fall back to WebSocket (works through any proxy/firewall)
-
-Timeout per attempt: **5 seconds** before trying next option.
-
-## Security
-
-- TLS 1.3 is mandatory in QUIC (encryption is not optional)
-- Certificate validation follows standard HTTPS rules
-- 0-RTT data is replayable — only idempotent messages (HELLO) should be sent in 0-RTT
-- QUIC has built-in amplification attack mitigation (address validation)
-- No additional encryption layer is needed
-
-## Comparison: QUIC vs WebRTC for VROOM-Graphical
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'clusterBkg': '#c0c0c0', 'clusterBorder': '#606060'}}}%%
-graph LR
-    subgraph "WebRTC (today)"
-        direction TB
-        R1["1. HTTP POST /offer"]
-        R2["2. SDP exchange"]
-        R3["3. ICE gathering"]
-        R4["4. STUN/TURN"]
-        R5["5. DTLS handshake"]
-        R6["6. SCTP association"]
-        R7["7. DataChannel open"]
-        R8["8. xumux HELLO"]
-        R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8
-    end
-
-    subgraph "QUIC (future)"
-        direction TB
-        Q1["1. QUIC ClientHello"]
-        Q2["2. TLS 1.3 done"]
-        Q3["3. Stream 0 open"]
-        Q4["4. xumux HELLO"]
-        Q1 --> Q2 --> Q3 --> Q4
-    end
-```
-
-| Metric | WebRTC | QUIC |
-|--------|--------|------|
-| Setup round-trips | 3-5 | 1 (0 on resume) |
-| Infrastructure needed | STUN + TURN servers | Just a server with a port |
-| Connection migration | ICE restart (seconds) | Transparent (zero) |
-| Stream creation cost | DataChannel negotiation | Just a new stream ID |
-| Max concurrent streams | ~65535 DataChannels | ~2^62 streams |
-| Datagram support | maxRetransmits=0 (hack) | Native QUIC datagrams |
-
-**Bottom line**: QUIC is strictly superior. WebRTC remains the pragmatic choice today for browser reach. The xumux abstraction means applications don't need to change when migrating between them.
+1. **Base binding plus extension, or one binding.** This draft splits the QUIC binding into a single-stream base and the `quic-multistream/1` extension, as WebRTC does. The single-stream mode is trivial to implement, already exists in libxumux, and bridges like TCP. The cost is that "plain QUIC" xumux still has head-of-line blocking between channels. *Recommendation:* keep the split. A server that wants multistream accepts the extension, and simple implementations stay simple.
+2. **Magic bytes.** The libxumux `QuicAdapter` and the registry both say no magic on QUIC. Magic would catch a misconfigured ALPN or path, but ALPN already does that. *Recommendation:* no magic.
+3. **0-RTT rules** ([§6](#6-0-rtt)). They are stricter than the 0.1 text, which called HELLO idempotent. *Recommendation:* keep them strict until an application needs 0-RTT and can say what is safe.
+4. **URI scheme** `quic+xumux://` for native QUIC is a proposal for `xumcat`, by analogy with `tcp+xumux://`. *Recommendation:* adopt it in the xumcat tool, not in the spec.
