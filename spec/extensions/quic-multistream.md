@@ -1,6 +1,6 @@
 # xumux Extension: QUIC Multistream
 
-**Status**: Experimental, design draft for review | **Extension**: `quic-multistream/1` | **Binding**: [quic](../bindings/quic.md) | **Core**: [0.2](../core.md)
+**Status**: Experimental, design draft, not for implementation | **Extension**: `quic-multistream/1` | **Binding**: [quic](../bindings/quic.md) | **Core**: [0.2](../core.md)
 
 > This is a proposal. Normative keywords mark what the draft decides. Undecided points are listed in [Open questions](#open-questions), each with a recommendation.
 
@@ -87,7 +87,7 @@ Frames on dedicated streams and datagrams carry their full header, so a bridge c
    - **(B) QUIC flow control only (this draft).** There is one window, tuned by QUIC, with no control traffic and no shared stall point. The costs: an extension now changes the scope of core §6 (which extensions are allowed to do), a receiver must back-pressure by not reading (which the 0.2 implementations, with their single eager read loop, do not do yet), and bridges to credit-based bindings must terminate flow control (§5).
    - **(C) Per-channel choice**, negotiated in the request. That gives the most flexibility and the most to test.
 
-   *Recommendation:* (B). Avoiding cross-channel head-of-line blocking is the only reason to use dedicated streams, and (A) gives it back through WINDOW_UPDATE.
+   **Decided (2026-11-08): (B).** Avoiding cross-channel head-of-line blocking is the only reason to use dedicated streams, and (A) gives it back through WINDOW_UPDATE.
 2. **Bidirectional stream with a binding PING, or two unidirectional streams.** If each side opened its own unidirectional stream when it first sends, the channel would be identified by an ordinary first frame with no PING exemption. But a stream of an earlier channel instance could then arrive after its ID was reused, so a channel needs a quarantine or an incarnation number. It also uses twice as many streams. *Recommendation:* a bidirectional stream with a binding PING, as drafted.
 3. **Datagram ID quarantine.** A fixed 2 seconds is simple but arbitrary, and a datagram delayed longer is still misattributed. The alternatives are a per-instance tag in each datagram (which changes the frame on this path, so bridges must rewrite it), or a separate ID range for datagram channels. *Recommendation:* the quarantine, plus a SHOULD for applications to tolerate one stray message after reuse on unreliable channels, which they already must for loss and duplication.
 4. **Reliable, unordered channels.** QUIC has no native reliable-unordered primitive. One stream per message would provide it, at a cost of many streams. *Recommendation:* map them to a dedicated (ordered) stream, report `ordered: true`, and revisit if an application needs it.

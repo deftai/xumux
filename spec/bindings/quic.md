@@ -1,6 +1,6 @@
 # xumux on QUIC and WebTransport
 
-**Status**: Experimental, design draft for review | **Binding ID**: `quic` | **Core**: [0.2](../core.md)
+**Status**: Experimental, design draft, not for implementation | **Binding ID**: `quic` | **Core**: [0.2](../core.md)
 
 > This is a proposal that replaces the 0.1-era text. Normative keywords mark what the draft decides. Undecided points are listed in [Open questions](#open-questions), each with a recommendation. Implement the [websocket](websocket.md) or [webrtc](webrtc.md) binding first.
 
