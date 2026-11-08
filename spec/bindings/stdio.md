@@ -1,6 +1,8 @@
 # xumux on stdio
 
-**Status**: Draft | **Binding ID**: `stdio` | **Core**: [0.2](../core.md)
+**Status**: Draft | **Binding ID**: `stdio` | **Core**: [0.3](../core.md)
+
+**Provides**: one byte-stream base path (stdin and stdout), reliable and ordered; magic `XMUX`.
 
 For a parent process and a child process, CLI pipelines, process supervisors, and tunnelling over SSH (`ssh host xumux-server`).
 
@@ -30,6 +32,10 @@ Every channel is effectively `reliable: true, ordered: true`.
 - After the xumux CLOSE exchange, each side closes its stdout. The child then exits.
 - EOF on stdin without a CLOSE means the peer has gone. Treat it as a connection close with code `1001`.
 - A parent SHOULD also watch for the child exiting (SIGCHLD or `waitpid`) and treat it the same way.
+
+## Keepalive
+
+Use xumux keepalive ([core §8.2](../core.md#82-keepalive)). Pipes have no transport-level keepalive, and EOF or the child exiting does not detect a peer that is still running but has stopped answering.
 
 ## Security
 

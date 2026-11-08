@@ -1,6 +1,8 @@
 # xumux on WebRTC DataChannels
 
-**Status**: Draft | **Binding ID**: `webrtc` | **Core**: [0.2](../core.md)
+**Status**: Draft | **Binding ID**: `webrtc` | **Core**: [0.3](../core.md)
+
+**Provides**: one message-pipe base path (the `xumux` DataChannel), reliable and ordered; no magic. [webrtc-multichannel/1](../extensions/webrtc-multichannel.md) adds one path per channel.
 
 WebRTC gives browsers low-latency, encrypted (DTLS) and NAT-traversing connections, and DataChannels can sit beside audio and video tracks on the same PeerConnection.
 
@@ -53,7 +55,11 @@ Everything travels over one reliable, ordered DataChannel, so every channel is e
 4. Application data.
 5. xumux CLOSE exchange, then close the DataChannel. Close the PeerConnection too, unless it carries other things such as media tracks.
 
-If the `xumux` DataChannel closes unexpectedly, the connection is dead.
+If the `xumux` DataChannel closes unexpectedly, the connection is dead (code `1001`), unless an extension such as [session-resume](../extensions/session-resume.md) keeps it.
+
+## Keepalive
+
+Use xumux keepalive ([core §8.2](../core.md#82-keepalive)). SCTP heartbeats and ICE consent checks are invisible to xumux.
 
 ## Media tracks
 

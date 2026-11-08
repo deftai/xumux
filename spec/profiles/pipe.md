@@ -1,6 +1,8 @@
 # xumux Profile: Pipe
 
-**Status**: Draft | **Profile**: `pipe/1` | **Core**: [0.2](../core.md)
+**Status**: Draft | **Profile**: `pipe/1` | **Core**: [0.3](../core.md)
+
+**Requires**: effective `reliable: true, ordered: true`. **Consumption** ([core §6](../core.md#6-flow-control)): later than the default; bytes are consumed once written to the local end. **Codes**: `4500` ([Codes](#codes)).
 
 A `pipe/1` channel carries one bidirectional byte stream, with half-close, between two endpoints. It is the building block for port forwarding, for `xumcat`, and for attaching a process's stdin/stdout to a channel.
 

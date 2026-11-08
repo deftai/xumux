@@ -1,6 +1,6 @@
 # xumux Core Specification
 
-Version: **0.2.0-draft** | Status: Draft | Date: 2026-11-07
+Version: **0.3.0-draft** | Status: Draft | Date: 2026-11-08
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as described in RFC 2119.
 
@@ -10,7 +10,7 @@ This document is the whole of the core protocol. Together with one [binding](bin
 
 ## 1. Model
 
-An xumux **connection** runs over one already-established **transport** (a WebSocket, a TCP socket, a stdio pair, a WebRTC DataChannel, …). Establishing, encrypting and authenticating the transport is outside xumux.
+An xumux **connection** runs over one already-established **transport** (a WebSocket, a TCP socket, a stdio pair, a WebRTC DataChannel, …). Establishing, encrypting and authenticating the transport is outside xumux. The [binding](#112-bindings) turns the transport into a **base path** for frames ([§1.2](#12-layers)). An extension may add further paths, or let a connection continue on a new transport ([§3.1](#31-rules)).
 
 The two ends are the **client** (the side that sends HELLO) and the **server**.
 
@@ -28,6 +28,34 @@ Channel 0 is the **control channel**. It always exists and carries the messages 
 > An implementation MUST correctly handle everything a conforming peer may send. What it chooses to *send* is up to it.
 
 For example, an implementation is not required to open channels, send PINGs or fragment small messages, but it MUST answer a PING, process a peer's OPEN_CHANNEL (even if only to reject it), and reassemble fragments. There is a single conformance level; see [§12](#12-conformance).
+
+### 1.2 Layers
+
+Every rule in this specification belongs to one layer, and each layer gives the one above it a defined service:
+
+| # | Layer | Gives the layer above | Specified in |
+|---|---|---|---|
+| 1 | Transport | an established **byte stream** or **message pipe**, with its delivery properties | outside xumux (TLS, WebSocket, ICE/DTLS, QUIC) |
+| 2 | Framing | **frame paths**: whole, length-checked frames | each [binding](bindings/), and [§2](#2-frames) |
+| 3 | Session | a connection with **channels** that carry typed messages | [§3](#3-handshake)–[§10](#10-codes) |
+| 4 | Extensions | changes to layers 1–3, only when negotiated, and only through the hooks of [§11.1](#111-extensions) | [extensions/](extensions/) |
+| 5 | Profiles | one channel's message vocabulary | [§11.3](#113-profiles), [profiles/](profiles/) |
+| 6 | Application | the product: chooses binding, extensions and profiles; validates `auth` | outside this repository |
+
+Layers say where a rule sits on the data path. They are a different axis from the tiers in the [README](../README.md) (core, extensions, profiles, applications), which say who owns a document and how stable it is. A binding is part of the core tier but sits in layers 1–2. This specification does not require an implementation to be structured in layers. The layers fix which document may change which rule. Interfaces between the layers are sketched, informatively, in [docs/design/io-stack.md](../docs/design/io-stack.md).
+
+**Terms.**
+
+- A **frame path** carries whole frames between the two ends, with delivery properties of its own (`reliable`, `ordered`, and optionally a maximum frame size). Framing on a path identifies xumux (for example magic bytes), finds frame boundaries, and applies [§2.3](#23-frame-validation) steps 1–2 with the limit the session supplies. It does not interpret Type or Flags.
+- The **base path** is the one path every binding provides. It carries channel 0, and every channel that has no path of its own. Every binding in this repository has a reliable, ordered base path.
+- **Further paths** exist only where a binding or a negotiated extension defines them, as [webrtc-multichannel/1](extensions/webrtc-multichannel.md) does with one DataChannel per channel. A channel uses exactly one path for its whole life, chosen when it is opened. A receiver MUST discard a frame for a channel that arrives on a path other than that channel's path.
+
+The session rules for channels on further paths are shared by every binding and extension that defines them: frames that overtake the opening answer are held ([§5.2](#52-opening-a-channel)), effective properties are the path's ([§5.3](#53-effective-properties)), and an ID is reused only once its path can deliver no more frames for it ([§5.4](#54-closing-a-channel)).
+
+**Two rules.**
+
+1. **The session never depends on the transport.** The session rules ([§3](#3-handshake)–[§10](#10-codes)) depend only on the paths a binding provides and their properties, never on which binding is in use. A binding conveys everything the session needs through its paths.
+2. **A profile never touches channel 0.** A profile MUST NOT define control messages, flag bits or behaviour on channel 0. It uses only what a channel offers: opening with metadata, refusing and closing with codes, typed messages, and the point at which received bytes count as consumed ([§6](#6-flow-control)).
 
 ---
 
@@ -83,6 +111,8 @@ A receiver MUST, in this order:
 2. On message-oriented bindings, check that the transport message is exactly 8 + Payload Length bytes; otherwise close with `4001` (INVALID_MESSAGE).
 3. Close with `1002` if: the channel is `0xFFFF`; a reserved flag is set ([§2.1](#21-flags)); `MORE` is set on channel 0; or `MORE` and `PROBE` are both set.
 
+Steps 1 and 2 belong to framing ([§1.2](#12-layers)), with the limit supplied by the session. Step 3 belongs to the session, because extensions can define flag bits. A frame decoder MAY apply step 3 itself while no negotiated extension defines a flag bit.
+
 ---
 
 ## 3. Handshake
@@ -105,9 +135,10 @@ sequenceDiagram
 
 ### 3.1 Rules
 
-- The client's first frame MUST be HELLO. A server whose first received frame is not HELLO MUST close with `1002`.
+- The client's first frame on a transport MUST be HELLO, or a first frame defined by an extension as described below. A server whose first received frame is neither MUST close with `1002`.
 - The client MUST NOT send any other frame until it has received WELCOME, except CLOSE to abandon the handshake.
 - The server MUST answer HELLO with exactly one of WELCOME or CLOSE, and MUST NOT send anything before it.
+- **Continuing a connection.** An extension MAY define another first frame, on a control type allocated to it, for a new transport that continues a connection that was established with HELLO and in which that extension was negotiated ([session-resume/1](extensions/session-resume.md) defines RESUME). The extension's document defines the server's answer, which takes the place of WELCOME. The other rules of this section apply to that first frame and its answer as they do to HELLO and WELCOME, including the HELLO timeout. A server that does not implement the extension, or has not enabled it, sees a first frame that is not HELLO and closes with `1002`.
 - **HELLO timeout:** a server MUST close the transport if HELLO has not arrived within 10 seconds (configurable) of the transport opening. It MAY send CLOSE `4007` (HELLO_TIMEOUT) first.
 - A client SHOULD likewise give up if WELCOME does not arrive within a timeout (10 seconds recommended).
 - A client that receives CLOSE instead of WELCOME MUST treat the handshake as rejected.
@@ -119,7 +150,7 @@ JSON payload.
 
 ```json
 {
-  "version": [0, 2, 0],
+  "version": [0, 3, 0],
   "application": "vroom-terminal/1",
   "extensions": ["session-resume/1"],
   "maxFramePayload": 65536,
@@ -137,9 +168,10 @@ JSON payload.
 
 | Field | Type | Req. | Default | Description |
 |---|---|---|---|---|
-| `version` | `[major, minor, patch]` | MUST | | Protocol version. This document: `[0, 2, 0]`. |
+| `version` | `[major, minor, patch]` | MUST | | Protocol version. This document: `[0, 3, 0]`. |
 | `application` | string | SHOULD | | Application protocol and version, e.g. `"vroom-terminal/1"`. |
 | `extensions` | string[] | MAY | `[]` | Requested extensions, as `name/major` ([§11](#11-extensibility)). |
+| `extensionParams` | object | MAY | `{}` | Parameters for requested extensions, keyed by extension name ([§3.8](#38-extension-parameters)). |
 | `maxFramePayload` | number | MAY | 65536 | Largest frame payload the **client** will accept ([§3.4](#34-limits)). |
 | `maxMessageSize` | number | MAY | 262144 | Largest reassembled message the client will accept. |
 | `initialWindow` | number | MAY | 262144 | Flow-control credit the client grants the server on each new channel ([§6](#6-flow-control)). |
@@ -166,7 +198,7 @@ JSON payload.
 
 ```json
 {
-  "version": [0, 2, 0],
+  "version": [0, 3, 0],
   "extensions": ["session-resume/1"],
   "maxFramePayload": 65536,
   "maxMessageSize": 262144,
@@ -182,6 +214,7 @@ JSON payload.
 |---|---|---|---|---|
 | `version` | `[major, minor, patch]` | MUST | | The version the connection will use ([§3.5](#35-version-negotiation)). |
 | `extensions` | string[] | MAY | `[]` | Accepted extensions. MUST be a subset of the client's list. |
+| `extensionParams` | object | MAY | `{}` | Parameters for accepted extensions, keyed by extension name ([§3.8](#38-extension-parameters)). |
 | `maxFramePayload` | number | MAY | 65536 | Largest frame payload the **server** will accept. |
 | `maxMessageSize` | number | MAY | 262144 | Largest reassembled message the server will accept. |
 | `initialWindow` | number | MAY | 262144 | Credit the server grants the client on each new channel. |
@@ -214,11 +247,17 @@ There is no "unlimited" value. A declared value outside these bounds MUST cause 
 
 Versions are `[major, minor, patch]`.
 
-- **Major version 0:** the major and minor must both match. 0.x versions are mutually incompatible, so `0.1` and `0.2` cannot talk.
+- **Major version 0:** the major and minor must both match. 0.x versions are mutually incompatible, so `0.2` and `0.3` cannot talk.
 - **Major version ≥ 1:** the majors must match. The effective version is the lower minor, and features from a higher minor MUST NOT be used.
 - **Patch** differences are always compatible.
 
 If the versions are incompatible, the server MUST reply CLOSE `4006` (VERSION_MISMATCH). WELCOME `version` is the effective version.
+
+**0.2 and 0.3.** The frame header, the magic bytes, and the HELLO, WELCOME and CLOSE messages are laid out the same in both versions, so each can read the other's refusal:
+
+- A 0.2 server that receives a 0.3 HELLO (`version` `[0, 3, 0]`) replies CLOSE `4006`, and the 0.3 client sees that CLOSE instead of WELCOME. A 0.3 server answers a 0.2 HELLO the same way. A 0.2 server ignores the unknown `extensionParams` field ([§4.1](#41-robustness-rules)), so the version check is what refuses the HELLO.
+- A server that does not implement an extension-defined first frame ([§3.1](#31-rules)), which includes every 0.2 server, closes with `1002` when it receives one.
+- A client that implements both versions MAY retry on a new transport with the other version after CLOSE `4006`. One handshake never negotiates across 0.x minors.
 
 ### 3.6 Negotiation summary
 
@@ -226,6 +265,7 @@ If the versions are incompatible, the server MUST reply CLOSE `4006` (VERSION_MI
 |---|---|
 | `version` | [§3.5](#35-version-negotiation) |
 | `extensions` | Server picks a subset of the client's list |
+| `extensionParams` | Each side's parameters for an extension apply only if the extension is accepted ([§3.8](#38-extension-parameters)) |
 | `maxFramePayload`, `maxMessageSize`, `initialWindow` | Each side's own value applies to what it receives |
 | `pingInterval`, `pingTimeout` | Server's value applies to both sides |
 | HELLO channels | Server accepts or rejects each one |
@@ -235,6 +275,27 @@ If the versions are incompatible, the server MUST reply CLOSE `4006` (VERSION_MI
 To refuse a connection the server sends CLOSE instead of WELCOME and then follows the closing procedure in [§9.1](#91-close-0x20). It does not close the transport abruptly, because on TCP that can destroy the CLOSE before the client reads it. Typical codes are `4000` (AUTH_FAILED), `4006` (VERSION_MISMATCH), `1003` (UNSUPPORTED, unknown `application`) and `4011` (BUSY, the server is at its connection limit).
 
 Credentials in `auth` MUST NOT be sent over a transport that is not encrypted, except for local bindings (stdio, Unix sockets).
+
+### 3.8 Extension parameters
+
+HELLO and WELCOME MAY carry `extensionParams`: a JSON object whose keys are extension names, written as in `extensions`, and whose values are defined by each extension's document.
+
+```json
+{
+  "version": [0, 3, 0],
+  "extensions": ["example/1"],
+  "extensionParams": { "example/1": { "level": 3 } }
+}
+```
+
+- A receiver MUST ignore a key for an extension that is not listed in the same message's `extensions`, that it does not implement, or that is not accepted. Parameters take effect only for an accepted extension.
+- A server MUST NOT include in WELCOME a key for an extension that it does not accept.
+- An `extensionParams` value that is not a JSON object MUST cause CLOSE `4001` ([§4.1](#41-robustness-rules)).
+- An extension's document defines its parameters, which values are valid, and what a receiver does with an invalid one. Unless that document says otherwise, a server leaves out of WELCOME an extension whose HELLO parameters it cannot accept, and a client closes with `4001` if WELCOME carries invalid parameters for an accepted extension.
+- An extension that defines no parameters ignores its key.
+- `extensionParams` counts toward the 65536-byte limit on HELLO and WELCOME.
+
+`extensionParams` is for parameters of the whole connection. Per-channel parameters go in fields of ChannelRequest and ChannelAccept ([§11.1](#111-extensions)).
 
 ---
 
@@ -261,7 +322,7 @@ Ranges and reserved values are listed in the [registry](registry.md).
 - Unknown JSON fields MUST be ignored.
 - A control payload that is not a JSON object, or is missing a required field or has one of the wrong type, MUST cause CLOSE `4001`.
 - An unknown control type MUST be answered with ERROR `1003` and otherwise ignored. The connection stays open.
-- Until the handshake completes, the only frames allowed on channel 0 are HELLO, WELCOME and CLOSE ([§3.1](#31-rules)). A peer that receives any other channel-0 frame early MUST close with `1002`. Frames on other channels before WELCOME are handled by [§5.2](#52-opening-a-channel).
+- Until the handshake completes, the only frames allowed on channel 0 are HELLO, WELCOME and CLOSE, or an extension-defined first frame and its answer ([§3.1](#31-rules)). A peer that receives any other channel-0 frame early MUST close with `1002`. Frames on other channels before WELCOME are handled by [§5.2](#52-opening-a-channel).
 - HELLO MUST be sent only once and only by the client. WELCOME MUST be sent only once and only by the server. Any other HELLO or WELCOME MUST cause CLOSE `1002`.
 - CHANNEL_ACK or CHANNEL_REJECT for an ID that the receiver does not have in Opening state MUST cause CLOSE `1002`.
 - **Catch-all:** a receiver that detects a violation of a MUST in this document for which no action is given MUST close the connection with `4001` if a value is malformed or out of range, and `1002` otherwise. This includes non-integer IDs and codes.
@@ -318,13 +379,13 @@ sequenceDiagram
 - An implementation SHOULD limit the channels a peer can have open or being opened on one connection (1024 is a reasonable default). Channels accepted in HELLO count toward the limit. A server lists HELLO channels past the limit in WELCOME `rejected` with `4002` and SHOULD omit their `reason`: a refusal without a reason is shorter than any channel request, so WELCOME stays within the 65536-byte control payload limit however many channels HELLO asks for. For the same reason, other refusals in WELCOME SHOULD keep `reason` short.
 - The responder MAY send on the channel as soon as it has sent CHANNEL_ACK.
 - The opener MUST NOT send on the channel (data or probes) until it receives CHANNEL_ACK.
-- On bindings where a channel's frames can overtake channel-0 messages (such as [webrtc-multichannel](extensions/webrtc-multichannel.md)), the responder's first frames can arrive before the ACK or WELCOME. An opener that receives frames for a channel it has in Opening state MUST hold them until the ACK arrives (then process them) or a REJECT arrives (then discard them). This applies even before WELCOME. Probes received this way are answered after the ACK.
+- A channel on a path other than the base path ([§1.2](#12-layers)), such as a [webrtc-multichannel](extensions/webrtc-multichannel.md) DataChannel, has frames that can overtake channel-0 messages, so the responder's first frames can arrive before the ACK or WELCOME. An opener that receives frames for a channel it has in Opening state MUST hold them until the ACK arrives (then process them) or a REJECT arrives (then discard them). This applies even before WELCOME. Probes received this way are answered after the ACK.
 - The opener MUST NOT send CLOSE_CHANNEL for a channel in Opening state. To abandon an open request, it waits for the answer and closes the channel if it was accepted.
 - After CHANNEL_REJECT the ID is immediately free.
 
 ### 5.3 Effective properties
 
-The `reliable`, `ordered`, `maxRetransmits` and `maxPacketLifeTime` fields in a request are *requests*. CHANNEL_ACK and WELCOME report the **effective** properties, meaning what the connection will actually deliver on the binding in use. For example, on WebSocket, TCP and stdio every channel is effectively `reliable: true, ordered: true`.
+The `reliable`, `ordered`, `maxRetransmits` and `maxPacketLifeTime` fields in a request are *requests*. CHANNEL_ACK and WELCOME report the **effective** properties, which are the properties of the path the channel uses ([§1.2](#12-layers)). A binding defines the properties of its base path, and a binding or extension that adds paths defines theirs. For example, on WebSocket, TCP and stdio there is only the base path, so every channel is effectively `reliable: true, ordered: true`.
 
 Fragmentation ([§7](#7-fragmentation)) and flow control ([§6](#6-flow-control)) follow the effective properties.
 
@@ -345,6 +406,7 @@ stateDiagram-v2
 - **Sending CLOSE_CHANNEL:** the sender MUST NOT send further frames on the channel. It MUST discard incoming frames for the channel (except a CLOSE_CHANNEL on channel 0), and it waits for the peer's CLOSE_CHANNEL.
 - **Receiving CLOSE_CHANNEL** for an open channel: the receiver MUST stop sending on the channel, discard any partly reassembled message, and reply with CLOSE_CHANNEL unless it has already sent one.
 - The channel is **fully closed** once a side has both sent and received CLOSE_CHANNEL. Only then may the opener reuse the ID. If both sides close at the same moment, each one's CLOSE_CHANNEL serves as the other's reply.
+- A channel on a path other than the base path is fully closed only once, in addition, that path can deliver no more frames for it, as the binding or extension that defines the path specifies (for example, a DataChannel has fired `close`).
 - `code` is optional (default `1000`). A side that closes a channel because of a channel-level error uses the matching code ([§10](#10-codes)).
 - CLOSE_CHANNEL for a channel that is not open or closing MUST be ignored. CLOSE_CHANNEL for channel 0 MUST be answered with ERROR `1002`. The control channel closes only with the connection.
 
@@ -358,11 +420,11 @@ A non-probe frame on a channel that is closing MUST be discarded silently. A non
 
 Flow control stops a fast sender on one channel from exhausting the receiver's memory. On single-stream bindings it also stops one slow channel from stalling all the others.
 
-- **Scope:** it applies to every channel whose effective `reliable` is `true`. It does not apply to channel 0, to unreliable channels (lost frames would leak credit), or to probe frames.
+- **Scope:** it applies to every channel whose effective `reliable` is `true`, except a channel whose path a negotiated extension flow-controls instead ([§11.1](#111-extensions)). It does not apply to channel 0, to unreliable channels (lost frames would leak credit), or to probe frames.
 - **Unit:** payload bytes of non-probe frames. Headers are not counted.
 - **Initial credit:** when a channel opens, each side may send the peer up to the peer's declared `initialWindow` bytes on it.
 - **Sending:** a sender MUST NOT send a frame whose payload exceeds its remaining credit on that channel. It may fragment a message to fit ([§7](#7-fragmentation)), or wait.
-- **Consumed bytes:** a payload byte counts as consumed when the application has taken the message containing it. Because `initialWindow` ≥ `maxMessageSize` ([§3.4](#34-limits)), a message being reassembled always fits within the window, and can always complete once earlier messages have been consumed.
+- **Consumed bytes:** a payload byte counts as consumed when the layer above the session has taken the message containing it. By default that is when the application has taken the message. A profile MAY set a later point, and [pipe/1](profiles/pipe.md) does: its bytes are consumed once they are written to the local end. Because `initialWindow` ≥ `maxMessageSize` ([§3.4](#34-limits)), a message being reassembled always fits within the window, and can always complete once earlier messages have been consumed.
 - **Granting:** a receiver returns credit for consumed bytes with WINDOW_UPDATE. While data keeps arriving it SHOULD batch updates, for example once consumed-but-unreturned bytes reach half of its `initialWindow`. It MUST NOT withhold credit indefinitely: whenever consumed-but-unreturned bytes are above zero and no further frames for the channel are waiting to be processed, it MUST send the update promptly.
 - **Growing the window:** an increment MAY include credit beyond the bytes consumed. That raises the channel's window above `initialWindow`, and the receiver cannot take the credit back. A channel moves at most one window per round trip, so a fixed window limits it to window ÷ RTT: the default 256 KiB allows about 2.6 MB/s at 100 ms. Receivers SHOULD therefore grow the window of a channel whose sender is window-limited. One way is to double the window when a whole window is consumed within two smoothed RTTs ([§8.1](#81-ping-0x10-and-pong-0x11)). The growth should stop at a per-channel maximum and at a connection-wide total, which together bound the memory a peer can make the receiver buffer. This is local policy, and senders need no changes.
 - **Closing:** a receiver MUST NOT send WINDOW_UPDATE entries for a channel after it has sent CLOSE_CHANNEL for it, and discards any credit it has not yet returned. Because channel 0 is ordered, every entry sent before that CLOSE_CHANNEL reaches the peer before it, and so before the ID can be reused ([§5.4](#54-closing-a-channel)). Credit therefore never carries over to a new channel with the same ID.
@@ -400,7 +462,7 @@ Receivers:
 - On a channel where a message is being reassembled, the next non-probe frame continues it. If its Type differs, the receiver MUST close the channel with CLOSE_CHANNEL `1002`.
 - If the reassembled size would exceed the receiver's `maxMessageSize`, the receiver MUST close the channel with CLOSE_CHANNEL `4005`.
 
-**Scheduling guidance:** on single-stream bindings, senders SHOULD fragment large messages into frames of at most 16 KiB and interleave channels fairly (round-robin), so that one bulk transfer does not delay latency-sensitive channels.
+**Scheduling guidance:** on a path shared by several channels, such as the base path, senders SHOULD fragment large messages into frames of at most 16 KiB and interleave channels fairly (round-robin), so that one bulk transfer does not delay latency-sensitive channels.
 
 ---
 
@@ -431,7 +493,7 @@ A probe measures the transport plus both sides' send queues for that channel. It
 
 Keepalive uses the effective `pingInterval` (I) and `pingTimeout` (T) from WELCOME. If I is 0, keepalive is disabled. Each side applies the rule independently:
 
-- If a side has received no frame of any kind for I seconds, it SHOULD send a PING on channel 0.
+- If a side has received no frame of any kind, on any path, for I seconds, it SHOULD send a PING on channel 0.
 - If, after sending that PING, nothing at all arrives within T seconds, the side MUST treat the connection as dead. It MAY send CLOSE `4008` (KEEPALIVE_TIMEOUT), and it MUST close the transport.
 
 Any received frame counts as proof that the connection is alive, so a busy connection sends no PINGs.
@@ -501,19 +563,46 @@ A server at its connection limit refuses HELLO with CLOSE `4011` ([§3.7](#37-re
 
 ### 11.1 Extensions
 
-An extension changes core behaviour: it can add control types, flag bits, codes or frame semantics. Extensions:
+An extension changes core behaviour, in the ways listed below and no others. Extensions:
 
 - are named `name/major`, e.g. `session-resume/1`, and listed in the [registry](registry.md);
-- take effect only when the client lists them in HELLO and the server accepts them in WELCOME;
+- take effect only when the client lists them in HELLO and the server accepts them in WELCOME. Before that, an extension may only offer fields in HELLO (and `extensionParams`), and prepare paths where its document permits (webrtc-multichannel creates DataChannels before HELLO);
 - MAY use control types `0x30`–`0x7F`, reserved flag bits, and codes `4100`–`4499`, as allocated in the registry.
+
+An extension MAY use only these hooks:
+
+| Hook | Layer | Used by |
+|---|---|---|
+| Define control types `0x30`–`0x7F` and handle them | 3 | session-resume/1 |
+| Add fields to HELLO, WELCOME, ChannelRequest and ChannelAccept, and define its `extensionParams` ([§3.8](#38-extension-parameters)) | 3 | webrtc-multichannel/1 (`dataChannel`) |
+| Define reserved flag bits | 2–3 | none yet |
+| Add paths for individual channels, with their own effective properties ([§1.2](#12-layers)) | 2 | webrtc-multichannel/1 |
+| Flow-control some channels by their path instead of by [§6](#6-flow-control) | 3 | none yet (proposed for quic-multistream/1) |
+| Keep the connection alive when its base path is lost, and replace the base path under it | 2–3 | session-resume/1 |
+| Define another first frame on a new transport ([§3.1](#31-rules)) | 2–3 | session-resume/1 |
+| Define codes `4100`–`4499` | 3 | session-resume/1 |
+
+An extension that needs anything outside this list is a change to this document. An extension's document states which hooks it uses.
 
 ### 11.2 Bindings
 
-A binding defines how frames travel over one kind of transport, and any binding-specific rules (magic bytes, effective channel properties, endpoint conventions). See [bindings/](bindings/).
+A binding defines how frames travel over one kind of transport (layers 1–2, [§1.2](#12-layers)). See [bindings/](bindings/). Each binding document starts with a one-line **Provides** summary (for example "one byte-stream base path, magic `XMUX`") and states:
+
+1. the transport kind: byte stream or message pipe;
+2. how xumux is identified: magic bytes, subprotocol, ALPN or label;
+3. the framing: how frame boundaries are found, and how [§2.3](#23-frame-validation) steps 1–2 apply;
+4. the paths it provides and their properties: the base path, and any others;
+5. how the transport closing, or failing, maps to the end of the connection and to codes;
+6. how transport-level keepalive relates to [§8.2](#82-keepalive);
+7. security: encryption, and when HELLO `auth` may be sent.
+
+**Relays.** A frame relay forwards frames between two transports without running a session. It works only while both sides have the same path shape: one base path each, and no extension that adds paths or changes the scope of flow control, because flow control, holding and ID reuse are end to end. Between different path shapes, a bridge MUST run a session on each side and join channels between them.
 
 ### 11.3 Profiles
 
 A profile defines what flows on a channel: its message types and their meaning. Profiles do not change xumux, so independent tools can interoperate without any core change. A channel declares its profile in metadata, `"metadata": { "profile": "pipe/1" }`. A responder that does not support the profile rejects the channel with `4010`. See [profiles/](profiles/).
+
+A profile document states the effective properties it requires, whether it sets a later point of consumption than the default ([§6](#6-flow-control)), and the codes it uses. Profiles sit at layer 5 and never touch channel 0 ([§1.2](#12-layers)).
 
 Application protocols (VROOM, ACP, …) are defined outside this repository and may define their own profiles.
 
@@ -524,7 +613,7 @@ Application protocols (VROOM, ACP, …) are defined outside this repository and 
 There is one conformance level. An implementation MUST:
 
 - encode and decode frames, and validate them as in [§2.3](#23-frame-validation);
-- carry out the handshake ([§3](#3-handshake)) and enforce the HELLO timeout when acting as a server;
+- carry out the handshake ([§3](#3-handshake)) and enforce the HELLO timeout when acting as a server, ignoring `extensionParams` for extensions it has not accepted ([§3.8](#38-extension-parameters));
 - handle every control message in [§4](#4-control-messages), including rejecting peer-opened channels it does not support;
 - obey and enforce flow control ([§6](#6-flow-control));
 - reassemble fragments, and fragment its own messages when they exceed the peer's limit ([§7](#7-fragmentation));
@@ -544,7 +633,7 @@ Selected vectors, all generated by [conformance/gen_vectors.py](../conformance/g
 | Vector | Hex |
 |---|---|
 | Magic (stream bindings) | `58 4D 55 58` |
-| HELLO `{"version":[0,2,0]}` | `00 00 01 00 00 00 00 13 7B 22 76 65 72 73 69 6F 6E 22 3A 5B 30 2C 32 2C 30 5D 7D` |
+| HELLO `{"version":[0,3,0]}` | `00 00 01 00 00 00 00 13 7B 22 76 65 72 73 69 6F 6E 22 3A 5B 30 2C 33 2C 30 5D 7D` |
 | PING, channel 0, token 1000 | `00 00 10 02 00 00 00 04 00 00 03 E8` |
 | PONG, channel 0, token 1000 | `00 00 11 02 00 00 00 04 00 00 03 E8` |
 | PING, channel 3, token 0xDEADBEEF | `00 03 10 02 00 00 00 04 DE AD BE EF` |
@@ -555,7 +644,23 @@ Selected vectors, all generated by [conformance/gen_vectors.py](../conformance/g
 
 ---
 
-## Appendix A. Changes from 0.1
+## Appendix A. Changes from 0.2
+
+| Area | 0.2 | 0.3 |
+|---|---|---|
+| Version | `[0, 2, 0]` | `[0, 3, 0]`. 0.2 and 0.3 peers refuse each other with `4006` ([§3.5](#35-version-negotiation)) |
+| Layers | implicit | named, with the terms *frame path* and *base path*, and two rules ([§1.2](#12-layers)) |
+| First frame | always HELLO | HELLO, or an extension-defined frame that continues a connection on a new transport ([§3.1](#31-rules)) |
+| Extension parameters | none | `extensionParams` in HELLO and WELCOME ([§3.8](#38-extension-parameters)) |
+| Effective properties | per binding | those of the channel's path ([§5.3](#53-effective-properties)) |
+| Channels on further paths | rules in each extension | shared rules: path binding ([§1.2](#12-layers)), holding ([§5.2](#52-opening-a-channel)), ID reuse ([§5.4](#54-closing-a-channel)) |
+| Consumed bytes | when the application has taken the message | the same by default; a profile may set a later point ([§6](#6-flow-control)) |
+| Extensions | may change core behaviour | only through a fixed list of hooks ([§11.1](#111-extensions)) |
+| Bindings, profiles | | what each document must state ([§11.2](#112-bindings), [§11.3](#113-profiles)); frame relays need the same path shape on both sides |
+| Frame validation | | [§2.3](#23-frame-validation) step 3 belongs to the session; decoders may pre-check it |
+| `session-resume/1` | design draft | normative extension |
+
+## Appendix B. Changes from 0.1
 
 | Area | 0.1 | 0.2 |
 |---|---|---|

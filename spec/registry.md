@@ -16,13 +16,20 @@ Every number and name assigned by the [core specification](core.md), its extensi
 | `0xF0` | Core: ERROR |
 | `0xF1`–`0xFF` | Reserved for core |
 
-Control types `0x10` and `0x11` (PING and PONG in 0.1) are reserved and MUST NOT be reused. In 0.2, PING and PONG are probe types.
+Control types `0x10` and `0x11` (PING and PONG in 0.1) are reserved and MUST NOT be reused. Since 0.2, PING and PONG are probe types.
 
 ### Extension allocations
 
 | Types | Extension | Document |
 |---|---|---|
 | `0x30`–`0x33` | `session-resume/1` | [extensions/session-resume.md](extensions/session-resume.md) |
+
+### First frames on a new transport ([core §3.1](core.md#31-rules))
+
+| Type | Frame | Defined by |
+|---|---|---|
+| `0x01` | HELLO | core |
+| `0x31` | RESUME | `session-resume/1` |
 
 ## Probe types (any channel, PROBE set)
 
@@ -40,6 +47,10 @@ Control types `0x10` and `0x11` (PING and PONG in 0.1) are reserved and MUST NOT
 | `0x02` | `PROBE` (core) |
 | `0x04`–`0x80` | Reserved; usable only by a negotiated extension allocated here |
 
+## Extension parameters
+
+`extensionParams` keys ([core §3.8](core.md#38-extension-parameters)) are extension names from the table of [Extensions](#extensions). No extension in this registry defines parameters yet.
+
 ## Codes
 
 | Range | Use |
@@ -52,14 +63,17 @@ Control types `0x10` and `0x11` (PING and PONG in 0.1) are reserved and MUST NOT
 
 | Codes | Owner |
 |---|---|
-| 4100–4103 | `session-resume/1` |
+| 4100 | `session-resume/1`: RESUME_NOT_FOUND |
+| 4101 | `session-resume/1`: RESUME_EXPIRED |
+| 4102 | `session-resume/1`: RESUME_DATA_LOST |
+| 4103 | `session-resume/1`: RESUME_STATE_MISMATCH |
 | 4500 | `pipe/1`: TARGET_UNREACHABLE |
 
 ## Extensions
 
 | Name | Status | Document |
 |---|---|---|
-| `session-resume/1` | Design draft for 0.2, not for implementation | [extensions/session-resume.md](extensions/session-resume.md) |
+| `session-resume/1` | Draft (core 0.3) | [extensions/session-resume.md](extensions/session-resume.md) |
 | `webrtc-multichannel/1` | Draft | [extensions/webrtc-multichannel.md](extensions/webrtc-multichannel.md) |
 | `quic-multistream/1` | Experimental, design draft, not for implementation | [extensions/quic-multistream.md](extensions/quic-multistream.md) |
 
@@ -71,7 +85,7 @@ Control types `0x10` and `0x11` (PING and PONG in 0.1) are reserved and MUST NOT
 | `tcp` (incl. Unix sockets) | Draft | [bindings/tcp.md](bindings/tcp.md) | `XMUX` |
 | `stdio` | Draft | [bindings/stdio.md](bindings/stdio.md) | `XMUX` |
 | `webrtc` | Draft | [bindings/webrtc.md](bindings/webrtc.md) | No |
-| `quic` | Experimental, design draft for 0.2, not for implementation | [bindings/quic.md](bindings/quic.md) | No |
+| `quic` | Experimental, design draft, not for implementation | [bindings/quic.md](bindings/quic.md) | No |
 
 ## Profiles
 

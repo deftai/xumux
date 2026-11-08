@@ -1,6 +1,8 @@
 # xumux on QUIC and WebTransport
 
-**Status**: Experimental, design draft, not for implementation | **Binding ID**: `quic` | **Core**: [0.2](../core.md)
+**Status**: Experimental, design draft, not for implementation | **Binding ID**: `quic` | **Core**: [0.3](../core.md)
+
+**Provides** (proposed): one byte-stream base path (the session stream), reliable and ordered; ALPN `xumux`, no magic. [quic-multistream/1](../extensions/quic-multistream.md) would add one path per channel.
 
 > This is a proposal that replaces the 0.1-era text. Normative keywords mark what the draft decides. Undecided points are listed in [Open questions](#open-questions), each with a recommendation. Implement the [websocket](websocket.md) or [webrtc](webrtc.md) binding first.
 

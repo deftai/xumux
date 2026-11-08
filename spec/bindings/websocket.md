@@ -1,6 +1,8 @@
 # xumux on WebSocket
 
-**Status**: Draft | **Binding ID**: `websocket` | **Core**: [0.2](../core.md)
+**Status**: Draft | **Binding ID**: `websocket` | **Core**: [0.3](../core.md)
+
+**Provides**: one message-pipe base path, reliable and ordered; subprotocol `xumux`, no magic.
 
 WebSocket is the universal browser fallback and a good primary transport when UDP-style delivery is not needed (terminals, control-only applications).
 
@@ -29,6 +31,8 @@ A packet lost in TCP delays every channel (head-of-line blocking). Senders SHOUL
 2. HELLO / WELCOME.
 3. Application data.
 4. xumux CLOSE exchange, then a WebSocket close with code 1000 (or 1001 when going away). The xumux code carries the real reason.
+
+If the WebSocket closes or fails without a completed xumux CLOSE exchange, the connection is dead (code `1001`), unless an extension such as [session-resume](../extensions/session-resume.md) keeps it.
 
 ## Keepalive
 

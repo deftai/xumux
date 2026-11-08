@@ -4,7 +4,7 @@
 
 **Channels for remote apps, over any transport.**
 
-Version: 0.2.0-draft | Status: Draft | Date: 2026-11-07
+Version: 0.3.0-draft | Status: Draft | Date: 2026-11-08
 
 xumux (pronounced *zuh-mux*) multiplexes named, typed channels over one connection, and each channel has its own reliability and ordering. The same 8-byte frame and the same channel model work over WebRTC, WebSocket, QUIC, TCP, Unix sockets and stdio. A browser on WebRTC and a backend on stdio can therefore talk through a bridge that never decodes the application.
 
@@ -64,26 +64,27 @@ xumux does not define application messages, transport setup or encryption. Those
 | [spec/core.md](spec/core.md) | **The protocol.** Frames, handshake, channels, flow control, fragmentation, probes, codes, conformance. |
 | [spec/registry.md](spec/registry.md) | Every assigned number and name. |
 | [spec/bindings/](spec/bindings/) | [WebSocket](spec/bindings/websocket.md) · [TCP/Unix](spec/bindings/tcp.md) · [stdio](spec/bindings/stdio.md) · [WebRTC](spec/bindings/webrtc.md) · [QUIC](spec/bindings/quic.md) (experimental) |
-| [spec/extensions/](spec/extensions/) | Negotiated changes to the core: [webrtc-multichannel/1](spec/extensions/webrtc-multichannel.md), [quic-multistream/1](spec/extensions/quic-multistream.md) (design draft), [session-resume/1](spec/extensions/session-resume.md) (0.2 design draft) |
+| [spec/extensions/](spec/extensions/) | Negotiated changes to the core: [webrtc-multichannel/1](spec/extensions/webrtc-multichannel.md), [quic-multistream/1](spec/extensions/quic-multistream.md) (design draft), [session-resume/1](spec/extensions/session-resume.md) |
 | [spec/profiles/](spec/profiles/) | Standard channel contents: [pipe/1](spec/profiles/pipe.md) (byte streams, port forwarding) |
 | [conformance/](conformance/) | Test vectors (valid and invalid) and their generator |
 
 ### How it is layered
 
-| Tier | Changes the core? | Stability |
-|---|---|---|
-| Core + bindings | is the core | Frozen at 1.0 |
-| Extensions | yes, when negotiated | Versioned separately |
-| Profiles | no, they define one channel's contents | Versioned separately |
-| Applications | no | Their own repositories |
+| Tier | Changes the core? | Stability | Layers ([core §1.2](spec/core.md#12-layers)) |
+|---|---|---|---|
+| Core + bindings | is the core | Frozen at 1.0 | 1–2 Transport and framing (bindings), 3 Session (core) |
+| Extensions | yes, when negotiated, through a fixed list of hooks | Versioned separately | 4, hooking into 1–3 |
+| Profiles | no, they define one channel's contents | Versioned separately | 5 |
+| Applications | no | Their own repositories | 6 |
 
-Tiers say who owns a document and how stable it is. For where code sits on the data path (transport, framing, session, extensions, profiles, applications), see the [I/O stack design proposal](docs/design/io-stack.md).
+Tiers say who owns a document and how stable it is. Layers say where a rule sits on the data path. Core §1.2 defines the layers, the terms *frame path* and *base path*, and two rules: the session never depends on the transport, and a profile never touches channel 0. The rationale and the interfaces between layers are in the [I/O stack design](docs/design/io-stack.md).
 
 ## Implementations and tools
 
 | Project | Language | Status |
 |---|---|---|
-| [libxumux](https://github.com/deftai/libxumux) | TypeScript | Reference implementation; moving to 0.2 |
+| [libxumux](https://github.com/deftai/libxumux) | TypeScript | Reference implementation; implements 0.2 |
+| [libxumux-go](https://github.com/deftai/libxumux-go) | Go | Implements 0.2, with pipe/1 |
 | `xumcat` | (planned) | socat-style relay: `xumcat wss://host/xumux tcp:localhost:22` |
 
 ## Application protocols

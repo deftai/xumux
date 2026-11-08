@@ -1,12 +1,14 @@
 # xumux Extension: WebRTC Multichannel
 
-**Status**: Draft | **Extension**: `webrtc-multichannel/1` | **Binding**: [webrtc](../bindings/webrtc.md) | **Core**: [0.2](../core.md)
+**Status**: Draft | **Extension**: `webrtc-multichannel/1` | **Binding**: [webrtc](../bindings/webrtc.md) | **Core**: [0.3](../core.md)
 
-The base WebRTC binding sends every channel over one reliable, ordered DataChannel. This extension lets individual channels have **their own DataChannel**, so they get native unreliable or unordered delivery from SCTP. That matters for things like pointer movement, where a stale packet is worse than a lost one.
+The base WebRTC binding sends every channel over one reliable, ordered DataChannel, its base path. This extension adds a path per channel ([core §1.2](../core.md#12-layers)): individual channels can have **their own DataChannel**, so they get native unreliable or unordered delivery from SCTP. That matters for things like pointer movement, where a stale packet is worse than a lost one.
 
 ## Negotiation
 
 The client lists `webrtc-multichannel/1` in HELLO `extensions`. It only applies if the server accepts it in WELCOME. Without it, the base binding applies unchanged.
+
+**Hooks used** ([core §11.1](../core.md#111-extensions)): a request field (`dataChannel`), and paths for individual channels. It defines no `extensionParams`.
 
 ## Which channels get a DataChannel
 

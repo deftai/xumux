@@ -38,6 +38,7 @@ Every scenario fails if the IUT:
 
 - sends a payload above our `maxFramePayload` (65536 on channel 0), sets reserved flags, or sets `MORE` on channel 0 or on a probe;
 - sends anything but WELCOME or CLOSE first, or a second WELCOME, or anything after its CLOSE;
+- sends WELCOME `extensionParams` for an extension its WELCOME does not accept;
 - sends more data on a channel than the credit we granted, or a WINDOW_UPDATE that is malformed, is for channel 0, or raises our credit above 2³¹−1;
 - sends data or a probe on a channel it has not acknowledged or has closed, or sends WINDOW_UPDATE for a channel after its CLOSE_CHANNEL;
 - changes the type mid-message, or sends a message above our `maxMessageSize`;
@@ -55,7 +56,7 @@ The runner answers PINGs, refuses channels the IUT opens with `1003`, and replie
 
 | Step | Effect |
 |---|---|
-| `hello: {...}` | Send HELLO (version 0.2, keepalive off, plus the given fields) and wait for WELCOME, which must contain `welcome` if given. With `"expectWelcome": false` it does not wait. |
+| `hello: {...}` | Send HELLO (version 0.3, keepalive off, plus the given fields) and wait for WELCOME, which must contain `welcome` if given. With `"expectWelcome": false` it does not wait. |
 | `helloRaw: "..."` | Send this HELLO payload as is. |
 | `open: {...}`, `openRaw: {...}` | Send OPEN_CHANNEL and wait for its CHANNEL_ACK (`"expect": "none"` to not wait); `openRaw` sends it as is. |
 | `send: {channel, bytes, type?, frameSize?, force?}` | Send one message of patterned bytes, fragmented to the IUT's `maxFramePayload` (or `frameSize`), waiting for credit unless `force`. On a pipe/1 channel, DATA is instead sent as several unfragmented DATA messages sized to the credit. |
