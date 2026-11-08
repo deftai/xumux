@@ -25,7 +25,7 @@ The adapter must turn off its own keepalive PINGs (the runner answers them in an
 | `echo` | Send every message back with the same type and payload. |
 | `sink` | Read and discard every message, so credit is returned. |
 | `hold` | Accept, but never read: credit is never returned. |
-| `pipe-echo` | Only with `metadata.profile` `pipe/1` (refuse with `4010` otherwise): a pipe/1 stream that writes every byte it reads back to itself, then sends EOF after the peer's EOF. |
+| `pipe-echo` | Only with `metadata.profile` `pipe/1` (refuse with `4010` otherwise): a pipe/1 stream that writes every byte it reads back to itself, then sends EOF after the peer's EOF. Its local end is the pipe itself, with no buffer in between, so a byte counts as consumed (and its credit may be returned) only once its echo has been sent. |
 | anything else | Refuse with `4010`. |
 
 Nothing else may be written to stdout. Diagnostics go to stderr, and the runner shows the last line of stderr when a scenario fails.
@@ -42,9 +42,12 @@ Every scenario fails if the IUT:
 - sends data or a probe on a channel it has not acknowledged or has closed, or sends WINDOW_UPDATE for a channel after its CLOSE_CHANNEL;
 - changes the type mid-message, or sends a message above our `maxMessageSize`;
 - on a pipe/1 channel, fragments a message, or sends DATA after its EOF;
+- sends a control message that is not a JSON object or lacks a required field, or a PONG that answers none of our PINGs;
+- echoes a message on a core channel with a different type or boundaries;
+- stops reading its input for 10 seconds;
 - fails to answer CLOSE with CLOSE, or does not close the transport after the CLOSE exchange.
 
-The runner answers PINGs, and replies to CLOSE_CHANNEL and CLOSE as the spec requires. It ignores WINDOW_UPDATEs and probes unless a step waits for them.
+The runner answers PINGs, refuses channels the IUT opens with `1003`, and replies to CLOSE_CHANNEL and CLOSE as the spec requires. It ignores WINDOW_UPDATEs and probes unless a step waits for them.
 
 ## Scenarios
 
@@ -55,7 +58,7 @@ The runner answers PINGs, and replies to CLOSE_CHANNEL and CLOSE as the spec req
 | `hello: {...}` | Send HELLO (version 0.2, keepalive off, plus the given fields) and wait for WELCOME, which must contain `welcome` if given. With `"expectWelcome": false` it does not wait. |
 | `helloRaw: "..."` | Send this HELLO payload as is. |
 | `open: {...}`, `openRaw: {...}` | Send OPEN_CHANNEL and wait for its CHANNEL_ACK (`"expect": "none"` to not wait); `openRaw` sends it as is. |
-| `send: {channel, bytes, type?, frameSize?, force?}` | Send one message of patterned bytes, fragmented to the IUT's `maxFramePayload` (or `frameSize`), waiting for credit unless `force`. |
+| `send: {channel, bytes, type?, frameSize?, force?}` | Send one message of patterned bytes, fragmented to the IUT's `maxFramePayload` (or `frameSize`), waiting for credit unless `force`. On a pipe/1 channel, DATA is instead sent as several unfragmented DATA messages sized to the credit. |
 | `sendEach: {channel, bytes, count}` | Send `count` such messages. |
 | `frame: {...}`, `ctrl: {...}` | Send one raw frame, or one control message (`json` or `payloadHex`). |
 | `grant`, `grantRaw` | Send a WINDOW_UPDATE (`{channel, bytes}`, or raw hex). |
@@ -69,7 +72,6 @@ The runner answers PINGs, and replies to CLOSE_CHANNEL and CLOSE as the spec req
 | `expectPipeEOF` | Wait for the IUT's pipe/1 EOF. |
 | `expectAlive` | A PING on channel 0 is answered: the connection is still open. |
 | `expectQuiet: ms` | No unexpected control frame arrives for `ms`. |
-| `wait: ms` | Process frames for `ms`. |
 
 At the end of a scenario whose connection is still open, the runner closes it normally, so every scenario also checks the close handshake.
 

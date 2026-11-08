@@ -32,6 +32,8 @@ CONTROL_MAX = 65536
 MAX_WINDOW = 2**31 - 1
 DEFAULT_LIMITS = {"maxFramePayload": 65536, "maxMessageSize": 262144, "initialWindow": 262144}
 PIPE_DATA = 0x01
+WRITE_TIMEOUT = 10
+STDERR_TAIL = 1 << 16
 
 
 class Fail(Exception):
@@ -71,6 +73,32 @@ def subset(want, got):
     return want == got
 
 
+REQUIRED = {
+    "WELCOME": {"version": list},
+    "OPEN_CHANNEL": {"id": int, "name": str, "reliable": bool, "ordered": bool},
+    "CHANNEL_ACK": {"id": int, "reliable": bool, "ordered": bool},
+    "CHANNEL_REJECT": {"id": int, "code": int},
+    "CLOSE_CHANNEL": {"id": int},
+    "CLOSE": {"code": int},
+    "ERROR": {"code": int},
+}
+
+
+def check_body(name, body):
+    """The IUT's control payload is an object with the required fields (§3, §4)."""
+    if not isinstance(body, dict):
+        raise Fail(f"IUT sent a {name} whose payload is not a JSON object (§4)")
+    for k, t in REQUIRED.get(name, {}).items():
+        v = body.get(k)
+        if not isinstance(v, t) or (t is int and isinstance(v, bool)):
+            raise Fail(f"IUT sent a {name} without a valid {k!r}: {json.dumps(body)[:120]} (§4)")
+    if name == "WELCOME":
+        for k in ("channels", "rejected"):
+            if not isinstance(body.get(k, []), list) or not all(isinstance(e, dict) and isinstance(e.get("id"), int)
+                                                               for e in body.get(k, [])):
+                raise Fail(f"IUT sent a WELCOME with a malformed {k!r} (§3.3)")
+
+
 class Chan:
     """What the runner knows about one channel."""
 
@@ -85,6 +113,7 @@ class Chan:
         self.granted_by_iut = 0         # total WINDOW_UPDATE increments from the IUT
         self.sent = bytearray()         # payload bytes we sent (DATA for pipe, all for others)
         self.received = bytearray()     # payload bytes received (all non-probe, non-control)
+        self.sent_msgs = []             # messages we sent (type, payload), on non-pipe channels
         self.messages = []              # complete messages (type, payload)
         self.partial = None             # (type, bytearray) while reassembling
         self.taken = 0                  # messages already matched by expectMessage
@@ -112,6 +141,8 @@ class Runner:
         self.welcome = None
         self.ignore = set(scenario.get("ignore", []))
         self.next_seed = 1
+        self.pings = set()              # (channel, token) of our PINGs not yet answered
+        self.outq = bytearray()         # bytes for the IUT's stdin not yet written
 
     # ---------------------------------------------------------------- I/O
 
@@ -120,17 +151,51 @@ class Runner:
         self.proc = subprocess.Popen(self.cmd + [cfg], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE)
         self.out = self.proc.stdout.fileno()
-        os.set_blocking(self.out, False)
+        self.err = self.proc.stderr.fileno()
+        self.inp = self.proc.stdin.fileno()
+        for fd in (self.out, self.err, self.inp):
+            os.set_blocking(fd, False)
         self.stderr = bytearray()
-        os.set_blocking(self.proc.stderr.fileno(), False)
         self.write(MAGIC)
 
     def write(self, b):
-        try:
-            self.proc.stdin.write(b)
-            self.proc.stdin.flush()
-        except (BrokenPipeError, ValueError):
-            pass  # the IUT has gone; reading will say so
+        """Write to the IUT's stdin, reading its output meanwhile, so that neither side can
+        block the other. An IUT that stops reading for WRITE_TIMEOUT fails the scenario."""
+        self.outq += b
+        deadline = time.monotonic() + WRITE_TIMEOUT
+        while self.outq:
+            if self.inp is None:
+                self.outq.clear()  # the IUT has gone; reading will say so
+                return
+            timeout = deadline - time.monotonic()
+            if timeout <= 0:
+                raise Fail(f"IUT stopped reading its input ({len(self.outq)} bytes unwritten for {WRITE_TIMEOUT}s)")
+            r, w, _ = select.select([fd for fd in (self.out, self.err) if fd is not None], [self.inp], [], timeout)
+            self.read_ready(r)
+            if w:
+                try:
+                    n = os.write(self.inp, self.outq[:1 << 16])
+                    del self.outq[:n]
+                except BlockingIOError:
+                    pass
+                except (BrokenPipeError, OSError):
+                    self.inp = None
+
+    def read_ready(self, ready):
+        for fd in ready:
+            try:
+                b = os.read(fd, 1 << 20)
+            except BlockingIOError:
+                continue
+            if fd == self.err:
+                if not b:
+                    self.err = None
+                self.stderr = (self.stderr + b)[-STDERR_TAIL:]
+            elif not b:
+                self.eof = True
+                self.out = None
+            else:
+                self.buf += b
 
     def stop(self):
         try:
@@ -145,29 +210,21 @@ class Runner:
         self.drain_stderr()
 
     def drain_stderr(self):
-        try:
-            while True:
-                b = os.read(self.proc.stderr.fileno(), 65536)
-                if not b:
-                    break
-                self.stderr += b
-        except (BlockingIOError, OSError):
-            pass
+        while self.err is not None:
+            try:
+                b = os.read(self.err, 1 << 16)
+            except (BlockingIOError, OSError):
+                return
+            if not b:
+                return
+            self.stderr = (self.stderr + b)[-STDERR_TAIL:]
 
     def read_some(self, deadline):
-        timeout = max(0.0, deadline - time.monotonic())
-        r, _, _ = select.select([self.out], [], [], timeout)
-        if not r:
-            return False
-        try:
-            b = os.read(self.out, 1 << 20)
-        except BlockingIOError:
-            return False
-        if not b:
-            self.eof = True
-            return False
-        self.buf += b
-        return True
+        fds = [fd for fd in (self.out, self.err) if fd is not None]
+        if self.out is None:
+            return
+        r, _, _ = select.select(fds, [], [], max(0.0, deadline - time.monotonic()))
+        self.read_ready(r)
 
     def raw_frame(self, deadline):
         """The next frame from the IUT as (ch, type, flags, payload), or None at EOF/timeout."""
@@ -231,6 +288,10 @@ class Runner:
             raise Fail(f"IUT's first frame must be WELCOME or CLOSE (§3.1), got {describe(*f)}")
 
         if flags & PROBE:
+            if typ == PONG:
+                if (ch, payload) not in self.pings:
+                    raise Fail(f"IUT sent a PONG on channel {ch} that answers none of our PINGs (§8.1)")
+                self.pings.discard((ch, payload))
             if typ == PING and len(payload) == 4:
                 if ch == 0 or (ch in self.chans and self.chans[ch].state == "open"):
                     self.send_frame(ch, PONG, PROBE, payload)
@@ -293,6 +354,8 @@ class Runner:
                 if ch == 0:
                     raise Fail("IUT sent a WINDOW_UPDATE entry for channel 0 (§6.1)")
                 c = self.chans.get(ch)
+                if c is None and ch in self.closed:
+                    raise Fail(f"IUT sent WINDOW_UPDATE for channel {ch} after its CLOSE_CHANNEL (§6)")
                 if c is None:
                     continue
                 if c.got_close is not None:
@@ -302,10 +365,13 @@ class Runner:
                 if c.credit_from_iut > MAX_WINDOW:
                     raise Fail(f"IUT raised our credit on channel {ch} above 2^31-1 (§6)")
             return
+        if name is None:
+            return  # an unknown control type: its payload need not be JSON
         try:
             body = json.loads(payload)
         except ValueError:
-            raise Fail(f"IUT sent a {name} whose payload is not JSON")
+            raise Fail(f"IUT sent a {name} whose payload is not JSON (§4)")
+        check_body(name, body)
         if name == "WELCOME":
             if self.welcome is not None:
                 raise Fail("IUT sent a second WELCOME (§4.1)")
@@ -317,10 +383,10 @@ class Runner:
             asked = {c["id"] for c in self.hello_channels}
             if ids != asked or len(body.get("channels", [])) + len(body.get("rejected", [])) != len(asked):
                 raise Fail(f"WELCOME must list every HELLO channel exactly once (§3.3): asked {sorted(asked)}")
+            reqs = {r["id"]: r for r in self.hello_channels}
             for a in body.get("channels", []):
+                self.chans[a["id"]] = Chan(a["id"], reqs[a["id"]])
                 self.opened(a["id"])
-            for r in body.get("rejected", []):
-                self.chans.pop(r["id"], None)
         elif name == "CHANNEL_ACK":
             c = self.chans.get(body.get("id"))
             if c is None or c.state != "opening":
@@ -346,7 +412,11 @@ class Runner:
             if not self.sent_close:
                 self.sent_close = True
                 self.send_ctrl("CLOSE", {"code": 1000})
-        elif name in ("ERROR", "OPEN_CHANNEL"):
+        elif name == "OPEN_CHANNEL":
+            if body["id"] % 2 == 1 or body["id"] in (0, 0xFFFF) or body["id"] in self.chans:
+                raise Fail(f"IUT opened channel {body['id']}, which is odd, reserved or in use (§5.1)")
+            self.send_ctrl("CHANNEL_REJECT", {"id": body["id"], "code": 1003})
+        elif name == "ERROR":
             pass  # surfaced to expectations
         elif name in ("HELLO",):
             raise Fail("IUT (a server) sent HELLO (§4.1)")
@@ -450,6 +520,21 @@ class Runner:
         """Send one message, fragmented to the IUT's maxFramePayload, waiting for credit unless forced."""
         c = self.chans.get(cid)
         limit = frame_size or self.iut_limits["maxFramePayload"]
+        if c is not None and c.pipe and typ == PIPE_DATA and not force:
+            # pipe/1 DATA MUST NOT be fragmented: send it as separate DATA messages, each
+            # sized to the credit and the IUT's maxFramePayload (pipe.md).
+            off = 0
+            while off < len(data) or not data:
+                self.pump_until(f"credit to send on channel {cid}", lambda: c.credit_from_iut > 0,
+                                self.sc.get("timeout", 5))
+                n = min(limit, c.credit_from_iut, len(data) - off)
+                c.credit_from_iut -= n
+                self.send_frame(cid, typ, 0, data[off:off + n])
+                off += n
+                if not data:
+                    break
+            c.sent += data
+            return
         chunks = [data[i:i + limit] for i in range(0, len(data), limit)] or [b""]
         for i, chunk in enumerate(chunks):
             if c is not None and not force:
@@ -461,6 +546,8 @@ class Runner:
             self.send_frame(cid, typ, flags, chunk)
         if c is not None and (typ == PIPE_DATA or not c.pipe):
             c.sent += data
+        if c is not None and not c.pipe:
+            c.sent_msgs.append((typ, bytes(data)))
 
     def step(self, s):
         timeout = s.get("timeout", self.sc.get("timeout", 3))
@@ -474,8 +561,6 @@ class Runner:
                 if k in body:
                     self.limits[k] = body[k]
             self.hello_channels = body.get("channels", [])
-            for r in self.hello_channels:
-                self.chans[r["id"]] = Chan(r["id"], r)
             self.send_ctrl("HELLO", body)
             if s.get("expectWelcome", True):
                 self.wait_for(f"WELCOME {json.dumps(s.get('welcome'))}",
@@ -489,6 +574,7 @@ class Runner:
             req = {"reliable": True, "ordered": True}
             req.update(arg)
             self.chans[req["id"]] = Chan(req["id"], req)
+            self.closed.pop(req["id"], None)  # the ID is reused for a new channel
             self.send_ctrl("OPEN_CHANNEL", req)
             if s.get("expect", "ack") == "ack":
                 self.wait_for(f"CHANNEL_ACK for {req['id']}", self.ctrl_pred("CHANNEL_ACK", {"id": req["id"]}),
@@ -502,6 +588,8 @@ class Runner:
             self.send_frame(0, CTRL[t] if isinstance(t, str) else t, arg.get("flags", 0), payload)
         elif op == "frame":  # {"frame": {"channel", "type", "flags", "payloadHex" | "bytes"}}
             payload = bytes.fromhex(arg.get("payloadHex", "")) if "bytes" not in arg else bytes(arg["bytes"])
+            if arg.get("flags", 0) & PROBE and arg.get("type") == PING and len(payload) == 4:
+                self.pings.add((arg["channel"], payload))  # a valid PING sent raw may be answered
             self.send_frame(arg["channel"], arg.get("type", 1), arg.get("flags", 0), payload)
         elif op == "send":  # {"send": {"channel", "type", "bytes", "force", "frameSize"}}
             seed = self.next_seed
@@ -542,6 +630,19 @@ class Runner:
         elif op == "expectEcho":  # the IUT sent back exactly what we sent on the channel
             c = self.chan(arg["channel"])
             n = arg.get("bytes", len(c.sent))
+            if not c.pipe:
+                # Messages, not just bytes: same types and boundaries, in order.
+                k, total = 0, 0
+                while k < len(c.sent_msgs) and total < n:
+                    total += len(c.sent_msgs[k][1])
+                    k += 1
+                self.pump_until(f"{k} echoed messages on channel {c.id}", lambda: len(c.messages) >= k, timeout)
+                for j in range(k):
+                    if c.messages[j] != c.sent_msgs[j]:
+                        got, want = c.messages[j], c.sent_msgs[j]
+                        raise Fail(f"echoed message {j} on channel {c.id} is type 0x{got[0]:02x}, {len(got[1])} "
+                                   f"bytes; we sent type 0x{want[0]:02x}, {len(want[1])} bytes")
+                return
             self.pump_until(f"{n} echoed bytes on channel {c.id}", lambda: len(c.received) >= n, timeout)
             if bytes(c.received[:n]) != bytes(c.sent[:n]):
                 i = next(i for i in range(n) if c.received[i] != c.sent[i])
@@ -611,6 +712,7 @@ class Runner:
             self.quiet(arg)
         elif op == "ping":  # {"ping": {"channel", "token"}} and expect the PONG
             token = struct.pack(">I", arg.get("token", 1234))
+            self.pings.add((arg.get("channel", 0), token))
             self.send_frame(arg.get("channel", 0), PING, PROBE, token)
             if s.get("expectPong", True):
                 self.wait_for(f"PONG on channel {arg.get('channel', 0)}",
@@ -618,6 +720,7 @@ class Runner:
                               f[3] == token, timeout)
         elif op == "expectAlive":  # the connection still works: a PING on channel 0 is answered
             token = struct.pack(">I", 0xA11FE)
+            self.pings.add((0, token))
             self.send_frame(0, PING, PROBE, token)
             self.wait_for("a PONG proving the connection is open",
                           lambda f: f[2] & PROBE and f[1] == PONG and f[0] == 0 and f[3] == token, timeout)
@@ -633,12 +736,6 @@ class Runner:
             if c.granted_by_iut > len(c.received):
                 raise Fail(f"IUT returned {c.granted_by_iut} bytes of credit on pipe channel {c.id} but has "
                            f"echoed only {len(c.received)}: credit must follow writes to the local end (pipe.md)")
-        elif op == "wait":
-            deadline = time.monotonic() + arg / 1000
-            while time.monotonic() < deadline:
-                f = self.frame(deadline)
-                if f is None:
-                    break
         elif op == "close":
             self.teardown()
         else:
@@ -685,7 +782,7 @@ def main():
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("adapter", nargs="+")
     a = ap.parse_args()
-    features = set(a.features.split(","))
+    features = {f.strip() for f in a.features.split(",") if f.strip()}
 
     scenarios = []
     for fn in sorted(os.listdir(a.scenarios)):
