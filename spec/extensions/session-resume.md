@@ -69,11 +69,13 @@ Sent as the first frame on a new transport, in place of HELLO, after the magic b
 
 | Field | Type | Req. | Description |
 |---|---|---|---|
-| `token` | string | MUST | A new token. The one in RESUME is now invalid. |
+| `token` | string | MUST | A new token. It replaces the one in RESUME once the client confirms it (below). |
 | `resumeTimeout` | number | MUST | As in RESUME_TOKEN. |
 | `received` | `[id, count][]` | MUST | The server's receive counts. |
 
 The limits, keepalive parameters, extensions and `application` of the session do not change on resume.
+
+**Confirming the new token.** RESUMED is not replayed, so if the new transport fails before RESUMED arrives, the client still has only the old token. The client MUST therefore send a RECEIPT for channel 0 as its first frame after RESUMED. Until the server receives any frame from the client on the transport that carried RESUMED, it MUST accept both the old token and the new one. After that, it accepts only the new one. A successful resume with either token invalidates the other.
 
 ### 3.4 RECEIPT (`0x33`)
 
@@ -94,17 +96,18 @@ Each entry says "I have received `Count` replayed frames on this channel". A pay
 
 Probe frames are never replayed or counted. Neither are frames on other channels.
 
-Each side keeps, for every replayed channel and each direction, the number of replayed frames sent and received. The count of channel 0 starts at 0 after WELCOME. The count of any other channel starts at 0 when that channel comes into existence on that side (Opening), so a reused ID starts again from 0. Counts are unsigned 32-bit values that wrap, and are compared with serial-number arithmetic (RFC 1982). A sender MUST NOT have 2³¹ or more unacknowledged frames on one channel. Credit does not prevent that by itself, because empty frames take no credit, so a sender that reaches a local limit waits for a RECEIPT.
+Each side keeps, for every replayed channel and each direction, the number of replayed frames sent and received. The count of channel 0 starts at 0 after WELCOME. The count of any other channel starts at 0 when that channel comes into existence on that side (Opening), so a reused ID starts again from 0. Counts are unsigned 32-bit values that wrap, and are compared with serial-number arithmetic (RFC 1982). A sender MUST NOT have 2³¹ or more unacknowledged frames on one channel.
 
 Fragments are counted individually, so a transport can fail in the middle of a fragmented message. The receiver keeps its partial reassembly, and the retransmitted fragments complete it.
 
 ## 5. Acknowledging and retaining
 
 - A sender MUST retain a copy of each replayed frame it has sent until a RECEIPT (or a RESUME / RESUMED `received` list) covers it.
-- **Receipt before credit.** A receiver MUST NOT send a WINDOW_UPDATE that returns credit for bytes of a frame unless it has already sent a RECEIPT covering that frame. RECEIPT and WINDOW_UPDATE both travel on channel 0, so the RECEIPT arrives first. Because the sender cannot have more unacknowledged bytes on a channel than the credit it was granted, the data retained per channel is at most that channel's window.
+- **Receipt before credit.** A receiver MUST NOT send a WINDOW_UPDATE that returns credit for bytes of a frame unless it has already sent a RECEIPT covering that frame. RECEIPT and WINDOW_UPDATE both travel on channel 0, so the RECEIPT arrives first. Because the sender cannot have more unacknowledged bytes on a channel than the credit it was granted, the retained **payload** bytes per channel are at most that channel's window.
+- **Frame limit.** Credit does not count headers, and empty frames take none, so the window alone does not bound retained frames. A sender MUST also limit the unacknowledged frames per channel (4096 recommended). At that limit it stops sending on the channel and waits for a RECEIPT. Receivers SHOULD send a RECEIPT whenever 64 frames on any replayed channel are unacknowledged. Retained storage per channel is then at most the window plus the frame limit × (8 bytes + per-frame overhead).
 - **Channel 0.** A receiver SHOULD send a RECEIPT for channel 0 whenever 32 KiB or 64 frames are unacknowledged, and MUST NOT withhold it indefinitely: whenever frames are unacknowledged and none are waiting to be processed, it MUST send a RECEIPT promptly. A sender whose unacknowledged channel-0 data exceeds a local limit (1 MiB recommended) MAY close with `4004`.
 - A RECEIPT is sent promptly in the same way for any replayed channel whose frames carry no credit to return (for example, a stream of empty messages).
-- **Dropping.** A side MAY discard retained frames for a channel once it has received the peer's CLOSE_CHANNEL for it. The peer discards frames for a channel it has closed ([core §5.4](../core.md#54-closing-a-channel)), so they will never be needed.
+- **Dropping.** A side MAY discard retained frames for a channel once it has received the peer's CLOSE_CHANNEL for it. The peer discards frames for a channel it has closed ([core §5.4](../core.md#54-closing-a-channel)), so they will never be needed. See [§7](#7-resuming) for the other cases where retained frames are dropped on resume.
 
 ## 6. Losing the transport
 
@@ -143,12 +146,14 @@ sequenceDiagram
 4. The client checks the server's counts the same way and sends CLOSE `4103` or `4102` if they are inconsistent.
 5. Each side then retransmits, before any new frame, every retained frame the peer has not received, in the order the frames were first sent. Retransmitted frames do not consume credit again: it was taken when they were first sent.
 
-**Which channels are listed.** A `received` list has an entry for channel 0 and for every replayed channel that the reporter has in Opening or Open state. It has no entry for channels that are closing or closed. For each channel with retained frames the sender then retransmits as follows:
+**Which channels are listed.** A `received` list has an entry for channel 0 and for every replayed channel that the reporter has in Opening or Open state. It has no entry for channels that are closing or closed. An entry refers to the channel instance the *reporter* has, which after an ID reuse can be a later instance than the one the receiver of the list still holds. For each channel instance with retained frames, the sender therefore decides in this order:
 
-- If the peer listed the channel, it retransmits from the listed count.
-- If not, it discards them. The peer has either closed the channel, so it would discard them anyway, or has never heard of it, in which case the only retained frames are on channel 0 (the OPEN_CHANNEL), and those are replayed.
+1. If it has received the peer's CLOSE_CHANNEL for this instance, it discards them.
+2. If it has sent CLOSE_CHANNEL for this instance, and the peer's channel-0 count shows that the peer received it, it discards them. The peer has processed the close, so an entry for that ID can only be a later instance.
+3. Otherwise, if the peer listed the ID, the entry is for this instance, and the sender retransmits from the listed count.
+4. Otherwise it discards them. The peer has closed the channel or has never heard of it. In the second case the only retained frames are on channel 0 (the OPEN_CHANNEL), and those are replayed.
 
-An entry refers to the channel instance the reporter has. A reused ID cannot be confused with its previous use, because an opener reuses an ID only after receiving the peer's CLOSE_CHANNEL, and channel 0 is replayed in order, so a peer that lists the ID has already received everything about the earlier instance.
+Case 3 is safe. The peer has seen no close of this instance in either direction, because a close it had sent would make it omit the entry, and so it cannot have reused the ID: an opener reuses an ID only after it has both sent and received CLOSE_CHANNEL. For example, suppose the server sends data on channel 5 and then CLOSE_CHANNEL. The client receives both, replies with CLOSE_CHANNEL, and reopens 5, but its reply and the OPEN_CHANNEL are lost with the transport. The client lists the new 5 with count 0. The server's retained data for the old 5 is discarded by rule 2, because the client's channel-0 count covers the server's CLOSE_CHANNEL. The client's replayed reply and OPEN_CHANNEL then arrive in order.
 
 Retransmitting in the original order keeps the cross-channel order a single-stream binding gives (for example, a channel's last data before its CLOSE_CHANNEL).
 
@@ -160,10 +165,10 @@ Retransmitting in the original order keeps the cross-channel order a single-stre
 
 - The token is a bearer secret. It MUST be generated by a CSPRNG, MUST be compared in constant time, and MUST NOT be logged. Clients MUST keep it in memory only.
 - RESUME_TOKEN, RESUMED and RESUME MUST NOT be sent over a transport that is not encrypted, except on local bindings (stdio, Unix sockets), the same rule as for HELLO `auth`.
-- **Single use.** A token is valid for one successful resume. RESUMED always carries a new one. A captured token is therefore useless once the real client has resumed, and if an attacker resumes first, the real client's RESUME fails visibly with `4100`.
+- **Single use.** A token is valid for one successful resume. RESUMED always carries a new one, and the old one stays valid only until the client confirms it ([§3.3](#33-resumed-0x32-server--client)). A captured token is therefore useless once the real client has resumed, and if an attacker resumes first, the real client's RESUME fails visibly with `4100`.
 - **Binding to the original session.** If the server authenticated the client in HELLO (by `auth` or by the transport, such as a cookie or a client certificate), it MUST authenticate RESUME by the same means, and MUST reject it with `4000` unless the identity is the same as the original session's. A token alone does not let one identity take over another's session.
 - **Replay.** RESUME MUST NOT be sent in TLS or QUIC 0-RTT early data. Early data can be replayed, and a replayed RESUME would take over the session.
-- **Resource limits.** A detached session holds at most its flow-control windows plus its channel-0 retention. Servers SHOULD also cap the number of detached sessions per identity and in total, and MAY discard detached sessions early under memory pressure (resumes then fail with `4100`). Servers SHOULD rate-limit failed RESUMEs per source.
+- **Resource limits.** A detached session holds at most its flow-control windows, its per-channel frame limits ([§5](#5-acknowledging-and-retaining)) and its channel-0 retention. Servers SHOULD also cap the number of detached sessions per identity and in total, and MAY discard detached sessions early under memory pressure (resumes then fail with `4100`). Servers SHOULD rate-limit failed RESUMEs per source.
 
 ## 9. Codes
 
