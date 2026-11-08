@@ -1,6 +1,6 @@
 # Design: the xumux I/O stack (v0.3)
 
-**Status**: Design proposal, for review | **Targets**: xumux 0.3 | **Date**: 2026-11-08
+**Status**: Design draft, not for implementation | **Targets**: xumux 0.3 | **Date**: 2026-11-08
 
 > A proposal for the v0.3 "io-stack layering" milestone. It defines the layers of an xumux implementation, what each one exposes to the next, and what each may know about the others. It then maps the current spec documents and both 0.2 implementations onto them, and lists what would change. Decisions are stated plainly. Undecided points are in [Open questions](#10-open-questions), each with a recommendation. It supersedes the 0.1-era note in deftai/xumux#2 (`docs/io-stack.md`), whose "one transport, one session, N channels" shape it keeps.
 
@@ -194,7 +194,7 @@ Both implementations agree on layers 3 and 5. The differences are where framing 
 8. **README:** extend "How it is layered" with the layer column, and link this design.
 9. **Conformance:** split vectors into framing (layer 2: bytes ↔ frames, limits) and session behaviour (layer 3: scripted exchanges). That matches the behavioural-conformance work planned for v0.4.
 
-Items 1–5 and 7–9 are editorial: they describe what 0.2 already does and change no wire behaviour. Item 6, and the `extensionParams` slot of [Open question 4](#10-open-questions), change what a conforming peer may send, so they belong to a release with a version bump.
+Items 1–5 and 7–9 are editorial: they describe what 0.2 already does and change no wire behaviour. Item 6, and the `extensionParams` slot of [Open question 4](#10-open-questions), change what a conforming peer may send, so they belong to a release with a version bump. As decided under [Open question 3](#10-open-questions), the editorial items also go into 0.3 rather than 0.2.x.
 
 ### 8.2 libxumux-go
 
@@ -218,9 +218,9 @@ A **frame relay** forwards frames between two transports without running a sessi
 
 1. **How normative.** Should the interfaces in §3 be normative, or only the layer boundaries and the rules in §4? *Recommendation:* make the boundaries, the terms (frame path, base path) and the extension hook list normative in core §1 and §11. Keep the API shapes informative in this document, since language idioms differ.
 2. **PathProvider in the core or only in extensions.** Core §5.2 already has multi-path rules (holding frames that overtake the ACK). Defining "paths" in the core would let both multi-path extensions share one set of rules for opening, binding and ID reuse. *Recommendation:* define the concept and the shared rules in the core, and leave concrete paths to bindings and extensions.
-3. **Version number.** The editorial part of §8.1 changes no wire behaviour. Under [core §3.5](../../spec/core.md#35-version-negotiation), 0.2 and 0.3 cannot talk, so bumping the minor for a layering rewrite alone would break interop for nothing. *Recommendation:* publish the editorial items as 0.2.x, and put the behaviour changes (the core §3.1 first-frame rule, extension parameters) in 0.3, together with whatever first needs them (session-resume/1).
+3. **Version number.** The editorial part of §8.1 changes no wire behaviour. Under [core §3.5](../../spec/core.md#35-version-negotiation), 0.2 and 0.3 cannot talk, so bumping the minor for a layering rewrite alone would break interop for nothing. The draft recommended publishing the editorial items as 0.2.x. **Decided (2026-11-08):** the layering text goes into 0.3, together with the behaviour changes (the core §3.1 first-frame rule, extension parameters) and whatever first needs them (session-resume/1), so 0.3 is one coherent revision.
 4. **Extension parameters.** HELLO and WELCOME `extensions` are plain strings, so an extension with parameters needs its own message (session-resume's RESUME_TOKEN) or new top-level fields. *Recommendation:* add an optional `extensionParams` object keyed by extension name to HELLO and WELCOME, ignored unless that extension is accepted. This is a wire change, so it goes with the 0.3 bump in question 3.
 5. **Reserved-flag checks in framing or the session.** This draft puts core §2.3 step 3 in the session, so framing is extension-agnostic. Go and TS both check it in their frame codec today (`frame.go`, `decode-frame.ts`). *Recommendation:* the session, with the decoder free to pre-check when no extension defines flags.
 6. **Credit release in the interface.** Should "consume later than take" be a core concept (core §6 "consumed" redefined as "released by the layer above"), or an implementation detail? *Recommendation:* a sentence in core §6 that the point of consumption MAY be set by the profile, with pipe/1 as the example. It already depends on it.
 7. **Frame relays.** Should the spec define a frame relay at all (§9), and which rules it must keep (limits declared end to end, no rewriting)? *Recommendation:* defer to the v0.4 cat-tool work, but state the "same path shape" rule now.
-8. **deftai/xumux#2.** That draft PR (`docs/io-stack.md`, 0.1-era: `OMUX`, `FRAGMENT` flags, framer-owned fragmentation) overlaps this one. *Recommendation:* close it in favour of this design, after its useful parts (attach-first transports, keep the mux hot path thin) have been carried over. Attach-first is implied by layer 1 being "already established".
+8. **deftai/xumux#2.** That draft PR (`docs/io-stack.md`, 0.1-era: `OMUX`, `FRAGMENT` flags, framer-owned fragmentation) overlaps this one. **Decided (2026-11-08):** closed in favour of this design. Its useful parts (attach-first transports, keep the mux hot path thin) were carried over. Attach-first is implied by layer 1 being "already established".
