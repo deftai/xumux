@@ -1,6 +1,6 @@
 # xumux Extension: Session Resume
 
-**Status**: Design draft, for review | **Extension**: `session-resume/1` | **Core**: [0.2](../core.md)
+**Status**: Design draft, not for implementation | **Extension**: `session-resume/1` | **Core**: [0.2](../core.md)
 
 > This is a proposal. Normative keywords mark what the draft decides; points it does not decide are listed in [Open questions](#open-questions), each with a recommendation. It replaces the 0.1-era text, which carried sequence numbers in DATA payloads and a header byte that 0.2 no longer has.
 
