@@ -232,7 +232,7 @@ If the versions are incompatible, the server MUST reply CLOSE `4006` (VERSION_MI
 
 ### 3.7 Rejection
 
-To refuse a connection the server sends CLOSE instead of WELCOME and then follows the closing procedure in [§9.1](#91-close-0x20). It does not close the transport abruptly, because on TCP that can destroy the CLOSE before the client reads it. Typical codes are `4000` (AUTH_FAILED), `4006` (VERSION_MISMATCH) and `1003` (UNSUPPORTED, unknown `application`).
+To refuse a connection the server sends CLOSE instead of WELCOME and then follows the closing procedure in [§9.1](#91-close-0x20). It does not close the transport abruptly, because on TCP that can destroy the CLOSE before the client reads it. Typical codes are `4000` (AUTH_FAILED), `4006` (VERSION_MISMATCH), `1003` (UNSUPPORTED, unknown `application`) and `4011` (BUSY, the server is at its connection limit).
 
 Credentials in `auth` MUST NOT be sent over a transport that is not encrypted, except for local bindings (stdio, Unix sockets).
 
@@ -265,6 +265,16 @@ Ranges and reserved values are listed in the [registry](registry.md).
 - HELLO MUST be sent only once and only by the client. WELCOME MUST be sent only once and only by the server. Any other HELLO or WELCOME MUST cause CLOSE `1002`.
 - CHANNEL_ACK or CHANNEL_REJECT for an ID that the receiver does not have in Opening state MUST cause CLOSE `1002`.
 - **Catch-all:** a receiver that detects a violation of a MUST in this document for which no action is given MUST close the connection with `4001` if a value is malformed or out of range, and `1002` otherwise. This includes non-integer IDs and codes.
+
+### 4.2 Unread replies
+
+Many frames oblige the receiver to reply: OPEN_CHANNEL, CLOSE_CHANNEL, PING, an unknown control type. A peer that keeps sending them but never reads the replies makes them pile up in the receiver's send queue.
+
+- An implementation SHOULD bound the bytes of control and probe frames it has queued but not yet written to the transport. 1 MiB is RECOMMENDED.
+- When a new frame would exceed the bound, it SHOULD close the connection with `4004` (RATE_LIMITED).
+- It SHOULD NOT stop reading from the transport instead: two peers that both did so could deadlock.
+
+Data frames are not counted. On reliable channels flow control ([§6](#6-flow-control)) already bounds them. It does not apply to unreliable channels, so implementations SHOULD bound their queued data separately, for example by dropping the oldest messages.
 
 ---
 
@@ -305,6 +315,7 @@ sequenceDiagram
 - Channels are opened in HELLO (client only, answered in WELCOME) or with OPEN_CHANNEL (either side, after the handshake).
 - The responder MUST answer each OPEN_CHANNEL with exactly one CHANNEL_ACK or CHANNEL_REJECT carrying the same `id`.
 - An implementation that does not support peer-opened channels MUST reject them with `1003`. A responder at its channel limit rejects with `4002` (CHANNEL_LIMIT).
+- An implementation SHOULD limit the channels a peer can have open or being opened on one connection (1024 is a reasonable default). Channels accepted in HELLO count toward the limit. A server lists HELLO channels past the limit in WELCOME `rejected` with `4002` and SHOULD omit their `reason`: a refusal without a reason is shorter than any channel request, so WELCOME stays within the 65536-byte control payload limit however many channels HELLO asks for. For the same reason, other refusals in WELCOME SHOULD keep `reason` short.
 - The responder MAY send on the channel as soon as it has sent CHANNEL_ACK.
 - The opener MUST NOT send on the channel (data or probes) until it receives CHANNEL_ACK.
 - On bindings where a channel's frames can overtake channel-0 messages (such as [webrtc-multichannel](extensions/webrtc-multichannel.md)), the responder's first frames can arrive before the ACK or WELCOME. An opener that receives frames for a channel it has in Opening state MUST hold them until the ACK arrives (then process them) or a REJECT arrives (then discard them). This applies even before WELCOME. Probes received this way are answered after the ACK.
@@ -465,6 +476,17 @@ The same code space is used by CLOSE, CLOSE_CHANNEL, CHANNEL_REJECT, WELCOME `re
 | 4008 | KEEPALIVE_TIMEOUT | Peer stopped responding |
 | 4009 | FLOW_CONTROL_ERROR | Peer exceeded its flow-control credit |
 | 4010 | CHANNEL_REFUSED | Channel refused by the application (name, profile or permission) |
+| 4011 | BUSY | At capacity; try again later |
+
+Three codes refuse work for lack of resources:
+
+| Code | Cause | Retrying |
+|---|---|---|
+| `4002` CHANNEL_LIMIT | This connection has too many channels ([§5.2](#52-opening-a-channel)). | Works once the opener closes channels on the same connection. |
+| `4004` RATE_LIMITED | The peer's own behaviour: too many messages, or replies it does not read ([§4.2](#42-unread-replies)). | Fails until the peer changes its behaviour. |
+| `4011` BUSY | A resource shared with other connections is exhausted: connections, processes, memory. The peer did nothing wrong. | Works later. Peers SHOULD wait before retrying and back off on repeated refusals. |
+
+A server at its connection limit refuses HELLO with CLOSE `4011` ([§3.7](#37-rejection)). A responder short of a shared resource for one channel rejects it with `4011`.
 
 | Range | Use |
 |---|---|
@@ -549,6 +571,6 @@ Selected vectors, all generated by [conformance/gen_vectors.py](../conformance/g
 | Flow control | none | per-channel credit, WINDOW_UPDATE `0x07` |
 | PING/PONG | control-only, 8-byte PONG with receiver timestamp | PROBE flag, any channel, PONG echoes 4-byte token |
 | Keepalive | fixed interval | PING only when idle |
-| Codes | `CHANNEL_FULL` 4002, apps 4100–4999 | `CHANNEL_LIMIT` 4002, adds 4008–4010, extensions 4100–4499, profiles 4500–4599, apps 4600–4999 |
+| Codes | `CHANNEL_FULL` 4002, apps 4100–4999 | `CHANNEL_LIMIT` 4002, adds 4008–4011, extensions 4100–4499, profiles 4500–4599, apps 4600–4999 |
 | Conformance | Minimal / Full | single level |
 | Error handling | unspecified | [§2.3](#23-frame-validation), [§4.1](#41-robustness-rules) |
