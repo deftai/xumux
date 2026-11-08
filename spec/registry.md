@@ -45,7 +45,7 @@ Control types `0x10` and `0x11` (PING and PONG in 0.1) are reserved and MUST NOT
 | Range | Use |
 |---|---|
 | 1000–1003 | Core (aligned with RFC 6455) |
-| 4000–4099 | Core (4000–4010 assigned) |
+| 4000–4099 | Core (4000–4011 assigned) |
 | 4100–4499 | Extensions (allocated below) |
 | 4500–4599 | Profiles maintained in this repository (allocated below) |
 | 4600–4999 | Applications, not registered |
