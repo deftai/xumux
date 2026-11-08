@@ -22,7 +22,7 @@ Control types `0x10` and `0x11` (PING and PONG in 0.1) are reserved and MUST NOT
 
 | Types | Extension | Document |
 |---|---|---|
-| `0x30`–`0x32` | `session-resume/1` | [extensions/session-resume.md](extensions/session-resume.md) |
+| `0x30`–`0x33` | `session-resume/1` | [extensions/session-resume.md](extensions/session-resume.md) |
 
 ## Probe types (any channel, PROBE set)
 
@@ -59,7 +59,7 @@ Control types `0x10` and `0x11` (PING and PONG in 0.1) are reserved and MUST NOT
 
 | Name | Status | Document |
 |---|---|---|
-| `session-resume/1` | Draft, needs 0.2 update | [extensions/session-resume.md](extensions/session-resume.md) |
+| `session-resume/1` | Design draft for 0.2 (under review) | [extensions/session-resume.md](extensions/session-resume.md) |
 | `webrtc-multichannel/1` | Draft | [extensions/webrtc-multichannel.md](extensions/webrtc-multichannel.md) |
 
 ## Bindings
