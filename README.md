@@ -64,7 +64,7 @@ xumux does not define application messages, transport setup or encryption. Those
 | [spec/core.md](spec/core.md) | **The protocol.** Frames, handshake, channels, flow control, fragmentation, probes, codes, conformance. |
 | [spec/registry.md](spec/registry.md) | Every assigned number and name. |
 | [spec/bindings/](spec/bindings/) | [WebSocket](spec/bindings/websocket.md) · [TCP/Unix](spec/bindings/tcp.md) · [stdio](spec/bindings/stdio.md) · [WebRTC](spec/bindings/webrtc.md) · [QUIC](spec/bindings/quic.md) (experimental) |
-| [spec/extensions/](spec/extensions/) | Negotiated changes to the core: [webrtc-multichannel/1](spec/extensions/webrtc-multichannel.md), [session-resume/1](spec/extensions/session-resume.md) (0.2 design draft) |
+| [spec/extensions/](spec/extensions/) | Negotiated changes to the core: [webrtc-multichannel/1](spec/extensions/webrtc-multichannel.md), [quic-multistream/1](spec/extensions/quic-multistream.md) (design draft), [session-resume/1](spec/extensions/session-resume.md) (0.2 design draft) |
 | [spec/profiles/](spec/profiles/) | Standard channel contents: [pipe/1](spec/profiles/pipe.md) (byte streams, port forwarding) |
 | [conformance/](conformance/) | Test vectors (valid and invalid) and their generator |
 
