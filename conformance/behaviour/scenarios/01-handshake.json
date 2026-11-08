@@ -1,6 +1,6 @@
 [
  {
-  "name": "handshake: WELCOME answers HELLO with version 0.2",
+  "name": "handshake: WELCOME answers HELLO with version 0.3",
   "spec": "\u00a73.1, \u00a73.3",
   "steps": [
    {
@@ -8,7 +8,7 @@
     "welcome": {
      "version": [
       0,
-      2,
+      3,
       0
      ]
     }
@@ -32,6 +32,65 @@
    {
     "expectClose": {
      "code": 4006
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: a 0.2 HELLO is refused with 4006",
+  "spec": "\u00a73.5",
+  "steps": [
+   {
+    "hello": {
+     "version": [
+      0,
+      2,
+      0
+     ]
+    },
+    "expectWelcome": false
+   },
+   {
+    "expectClose": {
+     "code": 4006
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: extensionParams for an extension that is not accepted is ignored",
+  "spec": "\u00a73.8",
+  "steps": [
+   {
+    "hello": {
+     "extensions": [
+      "x-conformance-unknown/1"
+     ],
+     "extensionParams": {
+      "x-conformance-unknown/1": {
+       "level": 3
+      },
+      "x-not-requested/1": true
+     }
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: extensionParams that is not an object closes with 4001",
+  "spec": "\u00a73.8",
+  "steps": [
+   {
+    "hello": {
+     "extensionParams": [
+      "x"
+     ]
+    },
+    "expectWelcome": false
+   },
+   {
+    "expectClose": {
+     "code": 4001
     }
    }
   ]
@@ -63,7 +122,7 @@
     "hello": {}
    },
    {
-    "helloRaw": "{\"version\":[0,2,0]}"
+    "helloRaw": "{\"version\":[0,3,0]}"
    },
    {
     "expectClose": {
@@ -198,7 +257,7 @@
   "spec": "\u00a75.1",
   "steps": [
    {
-    "helloRaw": "{\"version\": [0, 2, 0], \"channels\": [{\"id\": 1, \"name\": \"echo\", \"reliable\": true, \"ordered\": true}, {\"id\": 1, \"name\": \"echo\", \"reliable\": true, \"ordered\": true}]}"
+    "helloRaw": "{\"version\": [0, 3, 0], \"channels\": [{\"id\": 1, \"name\": \"echo\", \"reliable\": true, \"ordered\": true}, {\"id\": 1, \"name\": \"echo\", \"reliable\": true, \"ordered\": true}]}"
    },
    {
     "expectClose": {

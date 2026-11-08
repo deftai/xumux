@@ -1,6 +1,8 @@
 # xumux on TCP and Unix sockets
 
-**Status**: Draft | **Binding ID**: `tcp` | **Core**: [0.2](../core.md)
+**Status**: Draft | **Binding ID**: `tcp` | **Core**: [0.3](../core.md)
+
+**Provides**: one byte-stream base path, reliable and ordered; magic `XMUX`.
 
 For server-to-server links, local daemons and IPC. Unix domain stream sockets follow exactly the same rules.
 
@@ -35,6 +37,8 @@ Ports are chosen by the application. URI form for tools such as `xumcat`: `tcp:h
 ## Close
 
 After the xumux CLOSE exchange, each side shuts down its write half and closes the socket.
+
+EOF, a reset or a socket error without a completed CLOSE exchange means the connection is dead (code `1001`), unless an extension such as [session-resume](../extensions/session-resume.md) keeps it.
 
 ## Keepalive
 

@@ -1,8 +1,8 @@
 # xumux Extension: QUIC Multistream
 
-**Status**: Experimental, design draft, not for implementation | **Extension**: `quic-multistream/1` | **Binding**: [quic](../bindings/quic.md) | **Core**: [0.2](../core.md)
+**Status**: Experimental, design draft, not for implementation | **Extension**: `quic-multistream/1` | **Binding**: [quic](../bindings/quic.md) | **Core**: [0.3](../core.md)
 
-> This is a proposal. Normative keywords mark what the draft decides. Undecided points are listed in [Open questions](#open-questions), each with a recommendation.
+> This is a proposal. Normative keywords mark what the draft decides. Undecided points are listed in [Open questions](#open-questions), each with a recommendation. It would use these core hooks ([core §11.1](../core.md#111-extensions)): request and accept fields (`quic`, `streamToken`), paths for individual channels, and flow control by the path for channels on dedicated streams (decided: QUIC flow control only, [Open question 1](#open-questions)).
 
 The base [QUIC binding](../bindings/quic.md) sends every channel over one session stream. This extension lets a channel have **its own QUIC stream**, so loss on one channel does not delay the others, or travel on **QUIC datagrams**, which makes it natively unreliable and unordered. It is the QUIC counterpart of [`webrtc-multichannel/1`](webrtc-multichannel.md), and follows it wherever QUIC allows.
 

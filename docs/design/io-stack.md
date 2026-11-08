@@ -1,8 +1,8 @@
 # Design: the xumux I/O stack (v0.3)
 
-**Status**: Design draft, not for implementation | **Targets**: xumux 0.3 | **Date**: 2026-11-08
+**Status**: Design rationale. The normative parts are in [core 0.3](../../spec/core.md) (§1.2, §2.3, §3.1, §3.8, §5.3, §5.4, §6, §11) | **Targets**: xumux 0.3 | **Date**: 2026-11-08
 
-> A proposal for the v0.3 "io-stack layering" milestone. It defines the layers of an xumux implementation, what each one exposes to the next, and what each may know about the others. It then maps the current spec documents and both 0.2 implementations onto them, and lists what would change. Decisions are stated plainly. Undecided points are in [Open questions](#10-open-questions), each with a recommendation. It supersedes the 0.1-era note in deftai/xumux#2 (`docs/io-stack.md`), whose "one transport, one session, N channels" shape it keeps.
+> Written as the proposal for the v0.3 "io-stack layering" milestone, and kept as the rationale for it. Where this document and the core differ, the core wins. The interfaces in §3 stay informative. It defines the layers of an xumux implementation, what each one exposes to the next, and what each may know about the others. It then maps the current spec documents and both 0.2 implementations onto them, and lists what would change. Decisions are stated plainly. Undecided points are in [Open questions](#10-open-questions), each with a recommendation. It supersedes the 0.1-era note in deftai/xumux#2 (`docs/io-stack.md`), whose "one transport, one session, N channels" shape it keeps.
 
 ## 1. Why
 
@@ -159,9 +159,9 @@ Two rules carry most of the weight:
 | core.md §11 | 3–4 | extension, binding and profile rules |
 | [bindings/tcp](../../spec/bindings/tcp.md), [stdio](../../spec/bindings/stdio.md) | 1–2 | ByteStream; one base path with magic |
 | [bindings/websocket](../../spec/bindings/websocket.md), [webrtc](../../spec/bindings/webrtc.md) | 1–2 | MessagePipe; one base path |
-| [bindings/quic](../../spec/bindings/quic.md) | 1–2 | *As proposed in deftai/xumux#8:* ByteStream (one session stream), no magic. The document on `main` is still the 0.1-era stream-per-channel draft |
+| [bindings/quic](../../spec/bindings/quic.md) | 1–2 | Design draft: ByteStream (one session stream), no magic |
 | [extensions/webrtc-multichannel](../../spec/extensions/webrtc-multichannel.md) | 2 (+3 fields) | PathProvider over DataChannels |
-| quic-multistream (proposed) | 2 (+3 fields, flow-control scope) | PathProvider over streams and datagrams |
+| [extensions/quic-multistream](../../spec/extensions/quic-multistream.md) (design draft) | 2 (+3 fields, flow-control scope) | PathProvider over streams and datagrams |
 | [extensions/session-resume](../../spec/extensions/session-resume.md) | 2–3 | replaces the base path under a live session. It needs channel states and properties, so it is not a pure path wrapper |
 | [profiles/pipe](../../spec/profiles/pipe.md) | 5 | needs reliable+ordered and credit release on write |
 | [docs/apps/*](../apps/) | 6 | moving out of this repository |
@@ -183,6 +183,8 @@ Both implementations agree on layers 3 and 5. The differences are where framing 
 ## 8. What would change
 
 ### 8.1 Spec text (v0.3)
+
+Done in core 0.3, except item 9 (the conformance split), which remains with the v0.4 conformance work.
 
 1. **core §1:** add a short "Layers" subsection (the table in §2 and the two rules in §4), and the terms *frame path* and *base path*.
 2. **core §5.3:** effective properties are those of the channel's path, and a binding or extension defines the paths.
@@ -216,11 +218,11 @@ A **frame relay** forwards frames between two transports without running a sessi
 
 ## 10. Open questions
 
-1. **How normative.** Should the interfaces in §3 be normative, or only the layer boundaries and the rules in §4? *Recommendation:* make the boundaries, the terms (frame path, base path) and the extension hook list normative in core §1 and §11. Keep the API shapes informative in this document, since language idioms differ.
-2. **PathProvider in the core or only in extensions.** Core §5.2 already has multi-path rules (holding frames that overtake the ACK). Defining "paths" in the core would let both multi-path extensions share one set of rules for opening, binding and ID reuse. *Recommendation:* define the concept and the shared rules in the core, and leave concrete paths to bindings and extensions.
+1. **How normative.** Should the interfaces in §3 be normative, or only the layer boundaries and the rules in §4? *Recommendation:* make the boundaries, the terms (frame path, base path) and the extension hook list normative in core §1 and §11. Keep the API shapes informative in this document, since language idioms differ. **Resolved in 0.3** as recommended (core §1.2, §11).
+2. **PathProvider in the core or only in extensions.** Core §5.2 already has multi-path rules (holding frames that overtake the ACK). Defining "paths" in the core would let both multi-path extensions share one set of rules for opening, binding and ID reuse. *Recommendation:* define the concept and the shared rules in the core, and leave concrete paths to bindings and extensions. **Resolved in 0.3** as recommended (core §1.2, §5.2, §5.4).
 3. **Version number.** The editorial part of §8.1 changes no wire behaviour. Under [core §3.5](../../spec/core.md#35-version-negotiation), 0.2 and 0.3 cannot talk, so bumping the minor for a layering rewrite alone would break interop for nothing. The draft recommended publishing the editorial items as 0.2.x. **Decided (2026-11-08):** the layering text goes into 0.3, together with the behaviour changes (the core §3.1 first-frame rule, extension parameters) and whatever first needs them (session-resume/1), so 0.3 is one coherent revision.
-4. **Extension parameters.** HELLO and WELCOME `extensions` are plain strings, so an extension with parameters needs its own message (session-resume's RESUME_TOKEN) or new top-level fields. *Recommendation:* add an optional `extensionParams` object keyed by extension name to HELLO and WELCOME, ignored unless that extension is accepted. This is a wire change, so it goes with the 0.3 bump in question 3.
-5. **Reserved-flag checks in framing or the session.** This draft puts core §2.3 step 3 in the session, so framing is extension-agnostic. Go and TS both check it in their frame codec today (`frame.go`, `decode-frame.ts`). *Recommendation:* the session, with the decoder free to pre-check when no extension defines flags.
-6. **Credit release in the interface.** Should "consume later than take" be a core concept (core §6 "consumed" redefined as "released by the layer above"), or an implementation detail? *Recommendation:* a sentence in core §6 that the point of consumption MAY be set by the profile, with pipe/1 as the example. It already depends on it.
-7. **Frame relays.** Should the spec define a frame relay at all (§9), and which rules it must keep (limits declared end to end, no rewriting)? *Recommendation:* defer to the v0.4 cat-tool work, but state the "same path shape" rule now.
+4. **Extension parameters.** HELLO and WELCOME `extensions` are plain strings, so an extension with parameters needs its own message (session-resume's RESUME_TOKEN) or new top-level fields. *Recommendation:* add an optional `extensionParams` object keyed by extension name to HELLO and WELCOME, ignored unless that extension is accepted. This is a wire change, so it goes with the 0.3 bump in question 3. **Resolved in 0.3** as recommended (core §3.8).
+5. **Reserved-flag checks in framing or the session.** This draft puts core §2.3 step 3 in the session, so framing is extension-agnostic. Go and TS both check it in their frame codec today (`frame.go`, `decode-frame.ts`). *Recommendation:* the session, with the decoder free to pre-check when no extension defines flags. **Resolved in 0.3** as recommended (core §2.3).
+6. **Credit release in the interface.** Should "consume later than take" be a core concept (core §6 "consumed" redefined as "released by the layer above"), or an implementation detail? *Recommendation:* a sentence in core §6 that the point of consumption MAY be set by the profile, with pipe/1 as the example. It already depends on it. **Resolved in 0.3** as recommended (core §6).
+7. **Frame relays.** Should the spec define a frame relay at all (§9), and which rules it must keep (limits declared end to end, no rewriting)? *Recommendation:* defer to the v0.4 cat-tool work, but state the "same path shape" rule now. **Resolved in 0.3** as recommended: the rule is in core §11.2; anything further waits for v0.4.
 8. **deftai/xumux#2.** That draft PR (`docs/io-stack.md`, 0.1-era: `OMUX`, `FRAGMENT` flags, framer-owned fragmentation) overlaps this one. **Decided (2026-11-08):** closed in favour of this design. Its useful parts (attach-first transports, keep the mux hot path thin) were carried over. Attach-first is implied by layer 1 being "already established".

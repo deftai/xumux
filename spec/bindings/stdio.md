@@ -1,6 +1,8 @@
 # xumux on stdio
 
-**Status**: Draft | **Binding ID**: `stdio` | **Core**: [0.2](../core.md)
+**Status**: Draft | **Binding ID**: `stdio` | **Core**: [0.3](../core.md)
+
+**Provides**: one byte-stream base path (stdin and stdout), reliable and ordered; magic `XMUX`.
 
 For a parent process and a child process, CLI pipelines, process supervisors, and tunnelling over SSH (`ssh host xumux-server`).
 

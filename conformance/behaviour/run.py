@@ -93,6 +93,10 @@ def check_body(name, body):
         if not isinstance(v, t) or (t is int and isinstance(v, bool)):
             raise Fail(f"IUT sent a {name} without a valid {k!r}: {json.dumps(body)[:120]} (§4)")
     if name == "WELCOME":
+        params = body.get("extensionParams", {})
+        exts = body.get("extensions", [])
+        if not isinstance(params, dict) or not isinstance(exts, list) or not all(k in exts for k in params):
+            raise Fail("IUT sent a WELCOME with extensionParams for an extension it did not accept (§3.8)")
         for k in ("channels", "rejected"):
             if not isinstance(body.get(k, []), list) or not all(isinstance(e, dict) and isinstance(e.get("id"), int)
                                                                for e in body.get(k, [])):
@@ -555,7 +559,7 @@ class Runner:
             next((k, v) for k, v in s.items() if k != "timeout")
 
         if op == "hello":
-            body = {"version": [0, 2, 0], "pingInterval": 0}
+            body = {"version": [0, 3, 0], "pingInterval": 0}
             body.update(arg or {})
             for k in DEFAULT_LIMITS:
                 if k in body:

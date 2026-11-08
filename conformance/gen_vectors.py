@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate conformance/vectors.json for xumux v0.2.
+"""Generate conformance/vectors.json for xumux v0.3.
 
 Run:  python3 -I conformance/gen_vectors.py > conformance/vectors.json
 
@@ -54,18 +54,23 @@ ok("magic", "Magic bytes 'XMUX', sent once before the first frame on stream bind
    b"XMUX", {"magic": "XMUX"})
 
 # ── Handshake ───────────────────────────────────────────────────────────────
-h = {"version": [0, 2, 0]}
+h = {"version": [0, 3, 0]}
 ok("hello-minimal", "Minimal HELLO.", frame(0, 0x01, 0, js(h)), fr(0, 0x01, 0, payload_json=h))
 
-h2 = {"version": [0, 2, 0], "application": "vroom-terminal/1",
+h2 = {"version": [0, 3, 0], "application": "vroom-terminal/1",
       "channels": [{"id": 1, "name": "data", "reliable": True, "ordered": True}]}
 ok("hello-with-channel", "HELLO requesting one channel; the client picks odd ID 1.",
    frame(0, 0x01, 0, js(h2)), fr(0, 0x01, 0, payload_json=h2))
 
-w = {"version": [0, 2, 0]}
+h3 = {"version": [0, 3, 0], "extensions": ["session-resume/1"],
+      "extensionParams": {"session-resume/1": {}, "x-unknown/1": {"level": 3}}}
+ok("hello-extension-params", "HELLO with extensionParams (core 0.3 §3.8). Keys for extensions the server does not accept, or that are not in extensions, are ignored.",
+   frame(0, 0x01, 0, js(h3)), fr(0, 0x01, 0, payload_json=h3))
+
+w = {"version": [0, 3, 0]}
 ok("welcome-minimal", "Minimal WELCOME.", frame(0, 0x02, 0, js(w)), fr(0, 0x02, 0, payload_json=w))
 
-w2 = {"version": [0, 2, 0], "channels": [{"id": 1, "reliable": True, "ordered": True}],
+w2 = {"version": [0, 3, 0], "channels": [{"id": 1, "reliable": True, "ordered": True}],
       "rejected": [{"id": 3, "code": 4010, "reason": "unknown channel name"}]}
 ok("welcome-accept-reject", "WELCOME accepting channel 1 and rejecting channel 3.",
    frame(0, 0x02, 0, js(w2)), fr(0, 0x02, 0, payload_json=w2))
@@ -148,13 +153,17 @@ bad("window-update-zero", "WINDOW_UPDATE with increment 0.",
 bad("window-update-control", "WINDOW_UPDATE entry for channel 0.",
     frame(0, 0x07, 0, struct.pack(">HI", 0, 4096)), {"action": "close", "code": 1002})
 bad("hello-even-id", "HELLO requesting a channel with an even (server-owned) ID.",
-    frame(0, 0x01, 0, js({"version": [0, 2, 0], "channels": [{"id": 2, "name": "x", "reliable": True, "ordered": True}]})),
+    frame(0, 0x01, 0, js({"version": [0, 3, 0], "channels": [{"id": 2, "name": "x", "reliable": True, "ordered": True}]})),
     {"action": "close", "code": 1002}, state="awaiting-hello")
 bad("second-hello", "HELLO after the handshake has completed.",
     frame(0, 0x01, 0, js(h)), {"action": "close", "code": 1002, "receiver": "server"})
+bad("extension-params-not-object", "HELLO whose extensionParams is not a JSON object (core 0.3 §3.8).",
+    frame(0, 0x01, 0, js({"version": [0, 3, 0], "extensionParams": ["x"]})), {"action": "close", "code": 4001}, state="awaiting-hello")
+bad("hello-version-0-2", "HELLO from a 0.2 client: 0.x minors are incompatible (§3.5).",
+    frame(0, 0x01, 0, js({"version": [0, 2, 0]})), {"action": "close", "code": 4006}, state="awaiting-hello")
 bad("limit-too-small", "HELLO declaring maxFramePayload below the 4096 minimum.",
-    frame(0, 0x01, 0, js({"version": [0, 2, 0], "maxFramePayload": 1024})), {"action": "close", "code": 4001}, state="awaiting-hello")
+    frame(0, 0x01, 0, js({"version": [0, 3, 0], "maxFramePayload": 1024})), {"action": "close", "code": 4001}, state="awaiting-hello")
 
-json.dump({"xumux": "0.2.0-draft", "flags": {"MORE": MORE, "PROBE": PROBE},
+json.dump({"xumux": "0.3.0-draft", "flags": {"MORE": MORE, "PROBE": PROBE},
            "valid": valid, "invalid": invalid}, sys.stdout, indent=2)
 sys.stdout.write("\n")
