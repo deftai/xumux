@@ -1,0 +1,232 @@
+[
+ {
+  "name": "flow: a receiver returns credit, so a sender can send past the initial window",
+  "spec": "\u00a76",
+  "config": {
+   "initialWindow": 65536,
+   "maxMessageSize": 65536
+  },
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "sink",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "sendEach": {
+     "channel": 1,
+     "bytes": 4096,
+     "count": 64
+    }
+   },
+   {
+    "expectCredit": {
+     "channel": 1,
+     "atLeast": 262144
+    }
+   }
+  ]
+ },
+ {
+  "name": "flow: sending past the granted credit closes with 4009",
+  "spec": "\u00a76",
+  "config": {
+   "initialWindow": 65536,
+   "maxMessageSize": 65536
+  },
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "hold",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 65536
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 1,
+     "force": true
+    }
+   },
+   {
+    "expectClose": {
+     "code": 4009
+    }
+   }
+  ]
+ },
+ {
+  "name": "flow: the IUT never sends past the credit we grant, and resumes when we grant more",
+  "spec": "\u00a76",
+  "steps": [
+   {
+    "hello": {
+     "maxFramePayload": 4096,
+     "maxMessageSize": 4096,
+     "initialWindow": 4096
+    }
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "sendEach": {
+     "channel": 1,
+     "bytes": 4096,
+     "count": 4
+    }
+   },
+   {
+    "expectReceived": {
+     "channel": 1,
+     "bytes": 4096,
+     "quietMs": 300
+    }
+   },
+   {
+    "grant": {
+     "channel": 1,
+     "bytes": 12288
+    }
+   },
+   {
+    "expectEcho": {
+     "channel": 1,
+     "bytes": 16384
+    }
+   }
+  ]
+ },
+ {
+  "name": "flow: an update raising credit above 2^31-1 closes with 4009",
+  "spec": "\u00a76",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "grant": {
+     "channel": 1,
+     "bytes": 2147483647
+    }
+   },
+   {
+    "expectClose": {
+     "code": 4009
+    }
+   }
+  ]
+ },
+ {
+  "name": "flow: a WINDOW_UPDATE whose length is not a multiple of 6 closes with 4001",
+  "spec": "\u00a76.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "grantRaw": "0001000001"
+   },
+   {
+    "expectClose": {
+     "code": 4001
+    }
+   }
+  ]
+ },
+ {
+  "name": "flow: a zero increment closes with 4001",
+  "spec": "\u00a76.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "grantRaw": "000100000000"
+   },
+   {
+    "expectClose": {
+     "code": 4001
+    }
+   }
+  ]
+ },
+ {
+  "name": "flow: a WINDOW_UPDATE entry for channel 0 closes with 1002",
+  "spec": "\u00a76.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "grantRaw": "000000000010"
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "flow: a WINDOW_UPDATE for an unknown channel is ignored",
+  "spec": "\u00a76.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "grantRaw": "000900000010"
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ }
+]

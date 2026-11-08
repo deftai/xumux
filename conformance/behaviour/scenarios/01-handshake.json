@@ -1,0 +1,266 @@
+[
+ {
+  "name": "handshake: WELCOME answers HELLO with version 0.2",
+  "spec": "\u00a73.1, \u00a73.3",
+  "steps": [
+   {
+    "hello": {},
+    "welcome": {
+     "version": [
+      0,
+      2,
+      0
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: incompatible version is refused with 4006",
+  "spec": "\u00a73.5",
+  "steps": [
+   {
+    "hello": {
+     "version": [
+      0,
+      1,
+      0
+     ]
+    },
+    "expectWelcome": false
+   },
+   {
+    "expectClose": {
+     "code": 4006
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: a first frame other than HELLO closes with 1002",
+  "spec": "\u00a73.1",
+  "steps": [
+   {
+    "openRaw": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: a second HELLO closes with 1002",
+  "spec": "\u00a74.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "helloRaw": "{\"version\":[0,2,0]}"
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: HELLO that is not JSON closes with 4001",
+  "spec": "\u00a74.1",
+  "steps": [
+   {
+    "helloRaw": "not json"
+   },
+   {
+    "expectClose": {
+     "code": 4001
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: maxFramePayload below 4096 closes with 4001",
+  "spec": "\u00a73.4",
+  "steps": [
+   {
+    "hello": {
+     "maxFramePayload": 1000
+    },
+    "expectWelcome": false
+   },
+   {
+    "expectClose": {
+     "code": 4001
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: initialWindow below maxMessageSize closes with 4001",
+  "spec": "\u00a73.4",
+  "steps": [
+   {
+    "hello": {
+     "initialWindow": 100000,
+     "maxMessageSize": 262144
+    },
+    "expectWelcome": false
+   },
+   {
+    "expectClose": {
+     "code": 4001
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: HELLO channels are accepted or rejected in WELCOME",
+  "spec": "\u00a73.3",
+  "steps": [
+   {
+    "hello": {
+     "channels": [
+      {
+       "id": 1,
+       "name": "echo",
+       "reliable": true,
+       "ordered": true
+      },
+      {
+       "id": 3,
+       "name": "refuse",
+       "reliable": true,
+       "ordered": true
+      }
+     ]
+    },
+    "welcome": {
+     "channels": [
+      {
+       "id": 1
+      }
+     ],
+     "rejected": [
+      {
+       "id": 3,
+       "code": 4010
+      }
+     ]
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 1000
+    }
+   },
+   {
+    "expectEcho": {
+     "channel": 1
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: an even HELLO channel ID closes with 1002",
+  "spec": "\u00a75.1",
+  "steps": [
+   {
+    "hello": {
+     "channels": [
+      {
+       "id": 2,
+       "name": "echo",
+       "reliable": true,
+       "ordered": true
+      }
+     ]
+    },
+    "expectWelcome": false
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: duplicate HELLO channel IDs close with 1002",
+  "spec": "\u00a75.1",
+  "steps": [
+   {
+    "helloRaw": "{\"version\": [0, 2, 0], \"channels\": [{\"id\": 1, \"name\": \"echo\", \"reliable\": true, \"ordered\": true}, {\"id\": 1, \"name\": \"echo\", \"reliable\": true, \"ordered\": true}]}"
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: HELLO channels past the channel limit are rejected with 4002",
+  "spec": "\u00a75.2",
+  "config": {
+   "maxChannels": 1
+  },
+  "steps": [
+   {
+    "hello": {
+     "channels": [
+      {
+       "id": 1,
+       "name": "echo",
+       "reliable": true,
+       "ordered": true
+      },
+      {
+       "id": 3,
+       "name": "echo",
+       "reliable": true,
+       "ordered": true
+      }
+     ]
+    },
+    "welcome": {
+     "channels": [
+      {
+       "id": 1
+      }
+     ],
+     "rejected": [
+      {
+       "id": 3,
+       "code": 4002
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "handshake: no HELLO within the timeout closes the transport",
+  "spec": "\u00a73.1",
+  "config": {
+   "handshakeTimeoutMs": 300
+  },
+  "steps": [
+   {
+    "expectClose": {
+     "code": 4007,
+     "orTransportClose": true
+    },
+    "timeout": 5
+   }
+  ]
+ }
+]

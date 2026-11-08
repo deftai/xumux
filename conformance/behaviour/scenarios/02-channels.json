@@ -1,0 +1,389 @@
+[
+ {
+  "name": "channels: OPEN_CHANNEL is acknowledged and the channel carries messages",
+  "spec": "\u00a75.2",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 1000
+    }
+   },
+   {
+    "expectEcho": {
+     "channel": 1
+    }
+   }
+  ]
+ },
+ {
+  "name": "channels: a refused channel gets CHANNEL_REJECT and its ID is free again",
+  "spec": "\u00a75.2",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "refuse",
+     "reliable": true,
+     "ordered": true
+    },
+    "expect": "none"
+   },
+   {
+    "expectCtrl": {
+     "type": "CHANNEL_REJECT",
+     "json": {
+      "id": 1,
+      "code": 4010
+     }
+    }
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 10
+    }
+   },
+   {
+    "expectEcho": {
+     "channel": 1
+    }
+   }
+  ]
+ },
+ {
+  "name": "channels: an even (server-side) ID from the client closes with 1002",
+  "spec": "\u00a75.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "openRaw": {
+     "id": 2,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "channels: opening an ID in use closes with 1002",
+  "spec": "\u00a75.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "openRaw": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "channels: ID 0xFFFF closes with 1002",
+  "spec": "\u00a75.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "openRaw": {
+     "id": 65535,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "channels: a closed ID can be reused once both CLOSE_CHANNELs are exchanged",
+  "spec": "\u00a75.4",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 500
+    }
+   },
+   {
+    "expectEcho": {
+     "channel": 1
+    }
+   },
+   {
+    "closeChannel": {
+     "id": 1
+    }
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 500
+    }
+   },
+   {
+    "expectEcho": {
+     "channel": 1
+    }
+   }
+  ]
+ },
+ {
+  "name": "channels: the channel limit rejects further opens with 4002 and keeps the connection",
+  "spec": "\u00a75.2",
+  "config": {
+   "maxChannels": 2
+  },
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "open": {
+     "id": 3,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "open": {
+     "id": 5,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    },
+    "expect": "none"
+   },
+   {
+    "expectCtrl": {
+     "type": "CHANNEL_REJECT",
+     "json": {
+      "id": 5,
+      "code": 4002
+     }
+    }
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ },
+ {
+  "name": "channels: CLOSE_CHANNEL for channel 0 is answered with ERROR 1002",
+  "spec": "\u00a75.4",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "ctrl": {
+     "type": "CLOSE_CHANNEL",
+     "json": {
+      "id": 0
+     }
+    }
+   },
+   {
+    "expectError": {
+     "code": 1002
+    }
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ },
+ {
+  "name": "channels: CLOSE_CHANNEL for an unknown channel is ignored",
+  "spec": "\u00a75.4",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "ctrl": {
+     "type": "CLOSE_CHANNEL",
+     "json": {
+      "id": 7
+     }
+    }
+   },
+   {
+    "expectQuiet": 200
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ },
+ {
+  "name": "channels: data on an unknown channel is discarded",
+  "spec": "\u00a75.5",
+  "ignore": [
+   "ERROR"
+  ],
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "frame": {
+     "channel": 5,
+     "type": 1,
+     "payloadHex": "0102"
+    }
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ },
+ {
+  "name": "channels: CHANNEL_ACK for a channel not being opened closes with 1002",
+  "spec": "\u00a74.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "ctrl": {
+     "type": "CHANNEL_ACK",
+     "json": {
+      "id": 2,
+      "reliable": true,
+      "ordered": true
+     }
+    }
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "channels: OPEN_CHANNEL missing a required field closes with 4001",
+  "spec": "\u00a74.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "openRaw": {
+     "id": 1,
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "expectClose": {
+     "code": 4001
+    }
+   }
+  ]
+ },
+ {
+  "name": "control: an unknown control type gets ERROR 1003 and the connection stays open",
+  "spec": "\u00a74.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "ctrl": {
+     "type": 63,
+     "json": {}
+    }
+   },
+   {
+    "expectError": {
+     "code": 1003
+    }
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ }
+]

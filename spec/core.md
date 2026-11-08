@@ -511,7 +511,7 @@ There is one conformance level. An implementation MUST:
 
 Sending PINGs, opening channels and keepalive are optional behaviours.
 
-Implementations SHOULD pass every vector in [conformance/vectors.json](../conformance/vectors.json).
+Implementations SHOULD pass every vector in [conformance/vectors.json](../conformance/vectors.json), and every scenario of the behavioural suite in [conformance/behaviour/](../conformance/behaviour/) for the features they implement.
 
 ---
 
