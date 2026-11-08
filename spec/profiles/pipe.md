@@ -96,7 +96,7 @@ If the allow-list has wildcard patterns, the responder MUST parse the target as 
 | host | Wildcards MUST NOT match `.`, so `tcp:api.example.*:443` does not match `api.example.attacker.net`. Names compare case-insensitively, ignoring a trailing `.`. |
 | host, IP pattern | A host pattern that is an IP address or IP wildcard MUST match only IP literals, never a DNS name: `10.0.0.*` must not match `10.0.0.example`, which a resolver search path can send anywhere. Exact IPs compare by value (`::1` equals `0::1`). |
 | port | A decimal number from 1 to 65535, in canonical form. |
-| unix path | The target MUST be an absolute, clean path (no `.` or `..` segments, `//` or trailing `/`), or the responder refuses it. Wildcards MUST NOT match `/`. Abstract socket names (`@name`) exist only on Linux; elsewhere `@name` is a relative path and MUST be refused. |
+| unix path | The target MUST be an absolute, clean path (no `.` or `..` segments, `//` or trailing `/`), or the responder refuses it. The one exception is a Linux abstract socket name (`@name`), whose name MUST be clean in the same way. On other systems `@name` is a relative path and MUST be refused. Wildcards MUST NOT match `/`. |
 | exec command | The arguments are chosen by the peer. `exec:` targets MUST be matched exactly against the whole command line, never with wildcards: `exec:ls *` would admit `exec:ls ; rm -rf ~` where commands run through a shell. |
 
 An allowed DNS name does not constrain the address it resolves to. Responders that must not reach certain networks SHOULD check the resolved address as well.

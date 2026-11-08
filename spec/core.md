@@ -274,7 +274,7 @@ Many frames oblige the receiver to reply: OPEN_CHANNEL, CLOSE_CHANNEL, PING, an 
 - When a new frame would exceed the bound, it SHOULD close the connection with `4004` (RATE_LIMITED).
 - It SHOULD NOT stop reading from the transport instead: two peers that both did so could deadlock.
 
-Data frames are not counted, because flow control ([§6](#6-flow-control)) already bounds them.
+Data frames are not counted. On reliable channels flow control ([§6](#6-flow-control)) already bounds them. It does not apply to unreliable channels, so implementations SHOULD bound their queued data separately, for example by dropping the oldest messages.
 
 ---
 
@@ -315,7 +315,7 @@ sequenceDiagram
 - Channels are opened in HELLO (client only, answered in WELCOME) or with OPEN_CHANNEL (either side, after the handshake).
 - The responder MUST answer each OPEN_CHANNEL with exactly one CHANNEL_ACK or CHANNEL_REJECT carrying the same `id`.
 - An implementation that does not support peer-opened channels MUST reject them with `1003`. A responder at its channel limit rejects with `4002` (CHANNEL_LIMIT).
-- An implementation SHOULD limit the channels a peer can have open or being opened on one connection (1024 is a reasonable default). Channels accepted in HELLO count toward the limit. A server lists HELLO channels past the limit in WELCOME `rejected` with `4002` and SHOULD omit their `reason`: a refusal without a reason is shorter than any channel request, so WELCOME stays within the 65536-byte control payload limit however many channels HELLO asks for.
+- An implementation SHOULD limit the channels a peer can have open or being opened on one connection (1024 is a reasonable default). Channels accepted in HELLO count toward the limit. A server lists HELLO channels past the limit in WELCOME `rejected` with `4002` and SHOULD omit their `reason`: a refusal without a reason is shorter than any channel request, so WELCOME stays within the 65536-byte control payload limit however many channels HELLO asks for. For the same reason, other refusals in WELCOME SHOULD keep `reason` short.
 - The responder MAY send on the channel as soon as it has sent CHANNEL_ACK.
 - The opener MUST NOT send on the channel (data or probes) until it receives CHANNEL_ACK.
 - On bindings where a channel's frames can overtake channel-0 messages (such as [webrtc-multichannel](extensions/webrtc-multichannel.md)), the responder's first frames can arrive before the ACK or WELCOME. An opener that receives frames for a channel it has in Opening state MUST hold them until the ACK arrives (then process them) or a REJECT arrives (then discard them). This applies even before WELCOME. Probes received this way are answered after the ACK.
