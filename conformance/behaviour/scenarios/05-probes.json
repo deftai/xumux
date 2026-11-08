@@ -1,0 +1,166 @@
+[
+ {
+  "name": "probes: PING on channel 0 is answered with the same token",
+  "spec": "\u00a78.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "ping": {
+     "channel": 0,
+     "token": 7
+    }
+   }
+  ]
+ },
+ {
+  "name": "probes: PING on an open channel is answered on that channel",
+  "spec": "\u00a78.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "ping": {
+     "channel": 1,
+     "token": 9
+    }
+   }
+  ]
+ },
+ {
+  "name": "probes: a probe of the wrong size is discarded",
+  "spec": "\u00a78.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "frame": {
+     "channel": 0,
+     "type": 16,
+     "flags": 2,
+     "payloadHex": "000001"
+    }
+   },
+   {
+    "expectQuiet": 300
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ },
+ {
+  "name": "probes: an unknown probe type is discarded",
+  "spec": "\u00a72.2",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "frame": {
+     "channel": 0,
+     "type": 18,
+     "flags": 2,
+     "payloadHex": "00000001"
+    }
+   },
+   {
+    "expectQuiet": 300
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ },
+ {
+  "name": "probes: PING on an unknown channel is discarded",
+  "spec": "\u00a78.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "frame": {
+     "channel": 7,
+     "type": 16,
+     "flags": 2,
+     "payloadHex": "00000001"
+    }
+   },
+   {
+    "expectQuiet": 300
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ },
+ {
+  "name": "probes: PING inside a fragmented message is answered and the message completes",
+  "spec": "\u00a77, \u00a78.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "frame": {
+     "channel": 1,
+     "type": 1,
+     "flags": 1,
+     "payloadHex": "aa"
+    }
+   },
+   {
+    "ping": {
+     "channel": 1,
+     "token": 5
+    }
+   },
+   {
+    "frame": {
+     "channel": 1,
+     "type": 1,
+     "flags": 0,
+     "payloadHex": "bb"
+    }
+   },
+   {
+    "expectMessage": {
+     "channel": 1,
+     "bytes": 2
+    }
+   }
+  ]
+ },
+ {
+  "name": "close: CLOSE is answered with CLOSE and the transport ends",
+  "spec": "\u00a79.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "close": true
+   }
+  ]
+ }
+]

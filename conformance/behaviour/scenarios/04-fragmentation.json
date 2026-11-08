@@ -1,0 +1,260 @@
+[
+ {
+  "name": "fragments: a fragmented message is reassembled into one",
+  "spec": "\u00a77",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 10000,
+     "frameSize": 3000
+    }
+   },
+   {
+    "expectMessage": {
+     "channel": 1,
+     "bytes": 10000
+    }
+   },
+   {
+    "expectEcho": {
+     "channel": 1
+    }
+   }
+  ]
+ },
+ {
+  "name": "fragments: the IUT fragments its messages to our maxFramePayload",
+  "spec": "\u00a77",
+  "steps": [
+   {
+    "hello": {
+     "maxFramePayload": 4096,
+     "maxMessageSize": 65536,
+     "initialWindow": 65536
+    }
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "echo",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 20000
+    }
+   },
+   {
+    "expectMessage": {
+     "channel": 1,
+     "bytes": 20000
+    }
+   },
+   {
+    "expectEcho": {
+     "channel": 1
+    }
+   }
+  ]
+ },
+ {
+  "name": "fragments: a message above maxMessageSize closes the channel with 4005",
+  "spec": "\u00a77",
+  "config": {
+   "maxFramePayload": 4096,
+   "maxMessageSize": 8192
+  },
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "sink",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 12288
+    }
+   },
+   {
+    "expectCloseChannel": {
+     "id": 1,
+     "code": 4005
+    }
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ },
+ {
+  "name": "fragments: a type change mid-message closes the channel with 1002",
+  "spec": "\u00a77",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "sink",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "frame": {
+     "channel": 1,
+     "type": 1,
+     "flags": 1,
+     "payloadHex": "aa"
+    }
+   },
+   {
+    "frame": {
+     "channel": 1,
+     "type": 2,
+     "flags": 0,
+     "payloadHex": "bb"
+    }
+   },
+   {
+    "expectCloseChannel": {
+     "id": 1,
+     "code": 1002
+    }
+   },
+   {
+    "expectAlive": true
+   }
+  ]
+ },
+ {
+  "name": "frames: a payload above the IUT's maxFramePayload closes with 4005",
+  "spec": "\u00a72.3",
+  "config": {
+   "maxFramePayload": 4096,
+   "maxMessageSize": 65536
+  },
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "sink",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "send": {
+     "channel": 1,
+     "bytes": 5000,
+     "frameSize": 5000,
+     "force": true
+    }
+   },
+   {
+    "expectClose": {
+     "code": 4005
+    }
+   }
+  ]
+ },
+ {
+  "name": "frames: a reserved flag bit closes with 1002",
+  "spec": "\u00a72.1",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "open": {
+     "id": 1,
+     "name": "sink",
+     "reliable": true,
+     "ordered": true
+    }
+   },
+   {
+    "frame": {
+     "channel": 1,
+     "type": 1,
+     "flags": 4,
+     "payloadHex": "00"
+    }
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "frames: channel 0xFFFF closes with 1002",
+  "spec": "\u00a72.3",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "frame": {
+     "channel": 65535,
+     "type": 1,
+     "payloadHex": "00"
+    }
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ },
+ {
+  "name": "frames: MORE on a probe closes with 1002",
+  "spec": "\u00a72.3",
+  "steps": [
+   {
+    "hello": {}
+   },
+   {
+    "frame": {
+     "channel": 0,
+     "type": 16,
+     "flags": 3,
+     "payloadHex": "00000001"
+    }
+   },
+   {
+    "expectClose": {
+     "code": 1002
+    }
+   }
+  ]
+ }
+]
