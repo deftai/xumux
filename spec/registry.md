@@ -59,9 +59,9 @@ Control types `0x10` and `0x11` (PING and PONG in 0.1) are reserved and MUST NOT
 
 | Name | Status | Document |
 |---|---|---|
-| `session-resume/1` | Design draft for 0.2 (under review) | [extensions/session-resume.md](extensions/session-resume.md) |
+| `session-resume/1` | Design draft for 0.2, not for implementation | [extensions/session-resume.md](extensions/session-resume.md) |
 | `webrtc-multichannel/1` | Draft | [extensions/webrtc-multichannel.md](extensions/webrtc-multichannel.md) |
-| `quic-multistream/1` | Experimental, design draft (under review) | [extensions/quic-multistream.md](extensions/quic-multistream.md) |
+| `quic-multistream/1` | Experimental, design draft, not for implementation | [extensions/quic-multistream.md](extensions/quic-multistream.md) |
 
 ## Bindings
 
@@ -71,7 +71,7 @@ Control types `0x10` and `0x11` (PING and PONG in 0.1) are reserved and MUST NOT
 | `tcp` (incl. Unix sockets) | Draft | [bindings/tcp.md](bindings/tcp.md) | `XMUX` |
 | `stdio` | Draft | [bindings/stdio.md](bindings/stdio.md) | `XMUX` |
 | `webrtc` | Draft | [bindings/webrtc.md](bindings/webrtc.md) | No |
-| `quic` | Experimental, design draft for 0.2 (under review) | [bindings/quic.md](bindings/quic.md) | No |
+| `quic` | Experimental, design draft for 0.2, not for implementation | [bindings/quic.md](bindings/quic.md) | No |
 
 ## Profiles
 
