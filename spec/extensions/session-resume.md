@@ -1,197 +1,200 @@
 # xumux Extension: Session Resume
 
-> **Not yet updated for xumux 0.2.** The extension name is now `session-resume/1` and it requires core 0.2. Open issues:
-> - "DATA messages" and "the Reserved byte" are SocketPipe leftovers. Sequence numbers need a 0.2 design that defines how they interact with fragments, probe frames (never sequenced) and flow control (credit must be re-synchronised on resume).
-> - RESUME_REQUEST replaces HELLO, so it must carry `version` and must be subject to the HELLO timeout.
-> - The 4100–4103 codes fit the extension range in the [registry](../registry.md).
+**Status**: Design draft, not for implementation | **Extension**: `session-resume/1` | **Core**: [0.2](../core.md)
 
-**Status**: Draft
-**Extension ID**: `session-resume/1`
-**Depends on**: xumux 0.2
+> This is a proposal. Normative keywords mark what the draft decides; points it does not decide are listed in [Open questions](#open-questions), each with a recommendation. It replaces the 0.1-era text, which carried sequence numbers in DATA payloads and a header byte that 0.2 no longer has.
 
-## Overview
+Session Resume lets a client reconnect after the transport fails and continue the **same** xumux connection: the same channels, the same flow-control state, and no lost or duplicated messages on reliable, ordered channels. It covers short outages (Wi-Fi to cellular, sleep and wake, a proxy restart). Keeping work alive with no client for hours, scrollback, and attaching several clients are application concerns ([docs/apps/session-persistence.md](../../docs/apps/session-persistence.md)) and are out of scope.
 
-Session Resume enables clients to reconnect to an existing xumux session after network disruption without losing state. The server buffers output during disconnection and replays it upon reconnection.
+## 1. Design in brief
 
-This is negotiated as an xumux extension in the HELLO/WELCOME handshake.
+- Nothing changes on the wire for application frames. There are **no sequence numbers in frames**. Each side counts the frames it sends and receives on every replayed channel, and frames on one channel arrive in order on one transport, so a count is enough to say what arrived.
+- Each side keeps a copy of every replayed frame it has sent until the peer acknowledges it with a RECEIPT. A receiver acknowledges frames before it returns their credit, so the retained data on a channel never exceeds that channel's flow-control window. The memory bound of [core §6](../core.md#6-flow-control) therefore also bounds the resume buffer.
+- After a resume, each side retransmits exactly what the peer has not received, in the original order. Frames are neither lost nor sent twice, so channel state, fragment reassembly and flow-control credit carry over unchanged. Credit is **not** re-synchronised, because nothing that affected it is lost.
+- The client resumes by sending RESUME instead of HELLO on a new transport, presenting a single-use token. Each successful resume issues a new token.
 
-## Use Cases
+## 2. Negotiation
 
-- Mobile users moving between networks (WiFi → cellular)
-- Temporary network outages
-- Laptop sleep/wake cycles
-- Browser tab backgrounding
+The client lists `session-resume/1` in HELLO `extensions`, and the extension applies only if WELCOME includes it. When it applies, the server's first frame after WELCOME MUST be RESUME_TOKEN.
 
-## Extension Negotiation
+## 3. Control messages
 
-Clients advertise support in HELLO:
+All are on channel 0, with control types allocated in the [registry](../registry.md).
+
+| Type | Name | Direction | Payload | Replayed |
+|---|---|---|---|---|
+| `0x30` | RESUME_TOKEN | S→C | JSON | yes |
+| `0x31` | RESUME | C→S | JSON, first frame on a new transport | no |
+| `0x32` | RESUMED | S→C | JSON, answer to RESUME | no |
+| `0x33` | RECEIPT | both | binary | no |
+
+### 3.1 RESUME_TOKEN (`0x30`), server → client
+
+```json
+{ "token": "pV1x3c0Jx2m5Q8yJmI2nqQ", "resumeTimeout": 120 }
+```
+
+| Field | Type | Req. | Description |
+|---|---|---|---|
+| `token` | string | MUST | Opaque secret with at least 128 bits of entropy, at most 512 bytes. |
+| `resumeTimeout` | number | MUST | Seconds the server keeps the session after losing the transport. MUST be between 1 and 3600. |
+
+The server MAY send a new RESUME_TOKEN at any time to rotate the token. The most recently received token replaces all earlier ones, and the server MUST stop accepting a token once it has sent its replacement and the replacement has been acknowledged (by a RECEIPT covering it).
+
+### 3.2 RESUME (`0x31`), client → server
+
+Sent as the first frame on a new transport, in place of HELLO, after the magic bytes on stream bindings.
 
 ```json
 {
   "version": [0, 2, 0],
-  "extensions": ["session-resume/1"],
-  "channels": [...]
+  "token": "pV1x3c0Jx2m5Q8yJmI2nqQ",
+  "received": [[0, 41], [1, 1093], [3, 0]],
+  "auth": { "type": "token", "token": "eyJhbGciOi..." }
 }
 ```
 
-If the server supports it, `"session-resume/1"` appears in the WELCOME `extensions` array.
+| Field | Type | Req. | Description |
+|---|---|---|---|
+| `version` | `[major, minor, patch]` | MUST | MUST be compatible with the session's version ([core §3.5](../core.md#35-version-negotiation)). |
+| `token` | string | MUST | The latest token from RESUME_TOKEN or RESUMED. |
+| `received` | `[id, count][]` | MUST | The client's receive counts ([§4](#4-counting)). |
+| `auth` | object | MAY | Credentials, as in HELLO. |
 
-## Additional Control Messages (on channel 0)
+### 3.3 RESUMED (`0x32`), server → client
 
-When `session-resume/1` is negotiated, the following additional control channel message types are available:
-
-| Type | Name | Direction | Description |
-|------|------|-----------|-------------|
-| `0x30` | SESSION_ID | S→C | Server assigns session ID after WELCOME |
-| `0x31` | RESUME_REQUEST | C→S | Client requests session resumption (replaces HELLO on reconnect) |
-| `0x32` | RESUME_RESPONSE | S→C | Server accepts/rejects resumption |
-
-### SESSION_ID (0x30)
-
-Sent by server on channel 0 immediately after WELCOME when `session-resume/1` is negotiated.
-
-**Payload** (JSON):
 ```json
-{
-  "sessionId": "a1b2c3d4e5f6...",
-  "resumeTimeout": 300,
-  "bufferSize": 65536
-}
+{ "token": "h3Zt9QmR0aLk7wUe5bS1fA", "resumeTimeout": 120, "received": [[0, 57], [1, 12]] }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `sessionId` | string | Opaque session identifier (min 128-bit entropy) |
-| `resumeTimeout` | number | Seconds server will hold session after disconnect (0 = indefinite) |
-| `bufferSize` | number | Max bytes server will buffer during disconnect |
+| Field | Type | Req. | Description |
+|---|---|---|---|
+| `token` | string | MUST | A new token. It replaces the one in RESUME once the client confirms it (below). |
+| `resumeTimeout` | number | MUST | As in RESUME_TOKEN. |
+| `received` | `[id, count][]` | MUST | The server's receive counts. |
 
-### RESUME_REQUEST (0x31)
+The limits, keepalive parameters, extensions and `application` of the session do not change on resume.
 
-Sent by client as the **first message** after transport reconnect (instead of HELLO).
+**Confirming the new token.** RESUMED is not replayed, so if the new transport fails before RESUMED arrives, the client still has only the old token. The client MUST therefore send a RECEIPT for channel 0 as its first frame after RESUMED. Until the server receives any frame from the client on the transport that carried RESUMED, it MUST accept both the old token and the new one. After that, it accepts only the new one. A successful resume with either token invalidates the other.
 
-**Payload** (JSON):
-```json
-{
-  "sessionId": "a1b2c3d4e5f6...",
-  "lastSequence": 42
-}
+### 3.4 RECEIPT (`0x33`)
+
+Binary payload of one or more 6-byte entries, the same shape as WINDOW_UPDATE:
+
+```
+[Channel:2][Count:4] [Channel:2][Count:4] ...
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `sessionId` | string | Session ID from previous SESSION_ID |
-| `lastSequence` | number | Last DATA sequence number received by client |
+Each entry says "I have received `Count` replayed frames on this channel". A payload length that is not a positive multiple of 6 MUST cause CLOSE `4001`. An entry with a count higher than the receiver has sent on that channel MUST cause CLOSE `4103`. Entries for channels that are not replayed, closing or unknown MUST be ignored. A count lower than one already received is stale and MUST be ignored.
 
-### RESUME_RESPONSE (0x32)
+## 4. Counting
 
-**Payload** (JSON):
+**Replayed frames** are the non-probe frames sent:
 
-Success:
-```json
-{
-  "success": true,
-  "replayStart": 43,
-  "replayCount": 5
-}
-```
+- on channel 0 after the handshake (WELCOME), except RECEIPT, RESUME and RESUMED;
+- on a channel whose effective properties are both `reliable` and `ordered`.
 
-Failure:
-```json
-{
-  "success": false,
-  "code": 4101,
-  "reason": "Session expired"
-}
-```
+Probe frames are never replayed or counted. Neither are frames on other channels.
 
-## Sequence Numbers
+Each side keeps, for every replayed channel and each direction, the number of replayed frames sent and received. The count of channel 0 starts at 0 after WELCOME. The count of any other channel starts at 0 when that channel comes into existence on that side (Opening), so a reused ID starts again from 0. Counts are unsigned 32-bit values that wrap, and are compared with serial-number arithmetic (RFC 1982). A sender MUST NOT have 2³¹ or more unacknowledged frames on one channel.
 
-When `session-resume/1` is active, DATA messages on all channels include a connection-wide sequence number. This is carried in the Reserved byte of the frame header (repurposed when this extension is active) or as a prefix to the payload:
+Fragments are counted individually, so a transport can fail in the middle of a fragmented message. The receiver keeps its partial reassembly, and the retransmitted fragments complete it.
 
-**Extended DATA payload** (when session-resume active):
-```
-[Sequence:8][Data:variable]
-```
+## 5. Acknowledging and retaining
 
-Sequence numbers are monotonically increasing, scoped to the connection (not per-channel).
+- A sender MUST retain a copy of each replayed frame it has sent until a RECEIPT (or a RESUME / RESUMED `received` list) covers it.
+- **Receipt before credit.** A receiver MUST NOT send a WINDOW_UPDATE that returns credit for bytes of a frame unless it has already sent a RECEIPT covering that frame. RECEIPT and WINDOW_UPDATE both travel on channel 0, so the RECEIPT arrives first. Because the sender cannot have more unacknowledged bytes on a channel than the credit it was granted, the retained **payload** bytes per channel are at most that channel's window.
+- **Frame limit.** Credit does not count headers, and empty frames take none, so the window alone does not bound retained frames. A sender MUST also limit the unacknowledged frames per channel. The limit MUST be at least 128 (4096 recommended). At that limit it stops sending on the channel and waits for a RECEIPT. Receivers SHOULD send a RECEIPT whenever 64 frames on any replayed channel are unacknowledged. Retained storage per channel is then at most the window plus the frame limit × (8 bytes + per-frame overhead).
+- **Channel 0.** A receiver SHOULD send a RECEIPT for channel 0 whenever 32 KiB or 64 frames are unacknowledged, and MUST NOT withhold it indefinitely: whenever frames are unacknowledged and none are waiting to be processed, it MUST send a RECEIPT promptly. A sender whose unacknowledged channel-0 data exceeds a local limit (1 MiB recommended) MAY close with `4004`.
+- **Every replayed channel.** The same prompt rule applies to every replayed channel, whether or not its frames carry credit to return, and including a channel with an unfinished fragmented message: whenever frames are unacknowledged and none are waiting to be processed, the receiver MUST send a RECEIPT promptly. So a sender stopped at its frame limit is always released.
+- **Dropping.** A side MAY discard retained frames for a channel once it has received the peer's CLOSE_CHANNEL for it. The peer discards frames for a channel it has closed ([core §5.4](../core.md#54-closing-a-channel)), so they will never be needed. See [§7](#7-resuming) for the other cases where retained frames are dropped on resume.
 
-## Session Lifecycle
+## 6. Losing the transport
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'stateLabelColor': '#000000', 'compositeBackground': '#a0a0a0'}}}%%
-stateDiagram-v2
-    [*] --> ESTABLISHED: HELLO → WELCOME → SESSION_ID
-    ESTABLISHED --> DISCONNECTED: Transport closed
-    DISCONNECTED --> ESTABLISHED: RESUME_REQUEST → RESUME_RESPONSE (success)
-    DISCONNECTED --> EXPIRED: Resume timeout elapsed
-    ESTABLISHED --> CLOSED: CLOSE message
-    EXPIRED --> [*]
-    CLOSED --> [*]
-```
+When `session-resume/1` applies, a transport that ends **without** a completed CLOSE exchange does not close the connection. Each side instead **detaches** the session:
 
-## Resume Flow
+- The session, its channels and their state stay as they are. Application sends on reliable channels queue as usual until credit runs out, so the existing backpressure applies. Messages sent on unreliable channels while detached MAY be dropped.
+- Keepalive is suspended. PINGs that were outstanding are abandoned and SHOULD NOT be counted as lost.
+- A keepalive timeout ([core §8.2](../core.md#82-keepalive)) detaches the session instead of closing it. The side MUST close the transport and MUST NOT send CLOSE `4008`, since that would end the session.
+- The server keeps the detached session for at least `resumeTimeout` seconds, then discards it. The client SHOULD stop trying to resume after `resumeTimeout` seconds.
+- A server that receives a valid RESUME for a session that still appears attached MUST treat it as a takeover: it stops reading the old transport, closes it without sending CLOSE, and then answers on the new one. The client often learns of a failure before the server does.
+
+Sending or receiving CLOSE ends the session for good. It can no longer be resumed, and a side that loses the transport during a CLOSE exchange discards the session.
+
+## 7. Resuming
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#000000', 'secondaryTextColor': '#000000', 'tertiaryTextColor': '#000000', 'noteTextColor': '#000000', 'primaryColor': '#909090', 'secondaryColor': '#808080', 'tertiaryColor': '#707070', 'lineColor': '#404040', 'actorLineColor': '#404040', 'signalColor': '#404040', 'actorBkg': '#808080', 'actorTextColor': '#000000', 'noteBkgColor': '#909090'}}}%%
 sequenceDiagram
     participant C as Client
     participant S as Server
-
-    Note over C,S: Initial connection
     C->>S: HELLO {extensions: ["session-resume/1"], ...}
     S->>C: WELCOME {extensions: ["session-resume/1"], ...}
-    S->>C: SESSION_ID {sessionId: "abc123", resumeTimeout: 300}
-
-    C->>S: DATA (seq=1)
-    S->>C: DATA (seq=1)
-    C->>S: DATA (seq=2)
-    S->>C: DATA (seq=2)
-
-    Note over C,S: ⚡ Network disruption
-    C--xS: Transport lost
-
-    Note over S: Server buffers output (seq=3, 4, 5...)
-
-    Note over C,S: Client reconnects (new transport)
-    C->>S: RESUME_REQUEST {sessionId: "abc123", lastSequence: 2}
-    S->>C: RESUME_RESPONSE {success: true, replayStart: 3, replayCount: 3}
-
-    Note over S,C: Server replays buffered data
-    S->>C: DATA (seq=3)
-    S->>C: DATA (seq=4)
-    S->>C: DATA (seq=5)
-
-    Note over C,S: Normal operation resumes
-    C->>S: DATA (seq=3)
+    S->>C: RESUME_TOKEN {token: T1, resumeTimeout: 120}
+    Note over C,S: frames flow, RECEIPTs free retained copies
+    C--xS: transport lost
+    Note over C,S: both sides detached, channels still open
+    C->>S: (new transport) RESUME {version, token: T1, received}
+    S->>C: RESUMED {token: T2, received}
+    Note over C,S: each side retransmits what the other lacks, in original order
+    Note over C,S: normal operation
 ```
 
-## Error Codes (application-defined range 4100+)
+1. The client opens a new transport with the same binding and sends RESUME as its first frame. The HELLO rules apply to it: the server's HELLO timeout covers it ([core §3.1](../core.md#31-rules)), and the client sends nothing else until it receives RESUMED or CLOSE.
+2. The server checks, in order: the version (CLOSE `4006`), the token (CLOSE `4100`, or `4101` for a token it knows has expired), authentication (CLOSE `4000`, [§8](#8-security)), and the `received` counts (CLOSE `4103` if a count exceeds what it sent, `4102` if it no longer holds a frame the client needs). Rejection follows [core §3.7](../core.md#37-rejection). A rejected RESUME does not end the detached session unless the server decides so, except that `4102` and `4103` end it.
+3. On success the server takes over the session ([§6](#6-losing-the-transport)) and sends RESUMED with its own receive counts.
+4. The client checks the server's counts the same way and sends CLOSE `4103` or `4102` if they are inconsistent.
+5. Each side then retransmits, before any new frame (except the client's confirming RECEIPT, [§3.3](#33-resumed-0x32-server--client), which comes first), every retained frame the peer has not received, in the order the frames were first sent. Retransmitted frames do not consume credit again: it was taken when they were first sent.
 
-| Code | Name | Description |
-|------|------|-------------|
-| 4100 | SESSION_NOT_FOUND | Session ID not recognized |
-| 4101 | SESSION_EXPIRED | Resume timeout exceeded |
-| 4102 | BUFFER_OVERFLOW | Buffered data exceeded limit, data lost |
-| 4103 | SEQUENCE_MISMATCH | Client sequence doesn't match server state |
+**Which channels are listed.** A `received` list has an entry for channel 0 and for every replayed channel that the reporter has in Opening or Open state. It has no entry for channels that are closing or closed. An entry refers to the channel instance the *reporter* has, which after an ID reuse can be a later instance than the one the receiver of the list still holds. For each channel instance with retained frames, the sender therefore decides in this order:
 
-## Server Requirements
+1. If it has received the peer's CLOSE_CHANNEL for this instance, it discards them.
+2. If it has sent CLOSE_CHANNEL for this instance, and the peer's channel-0 count shows that the peer received it, it discards them. The peer has processed the close, so an entry for that ID can only be a later instance.
+3. Otherwise, if the peer listed the ID, the entry is for this instance, and the sender retransmits from the listed count.
+4. Otherwise it discards them. The peer has closed the channel or has never heard of it. In the second case the only retained frames are on channel 0 (the OPEN_CHANNEL), and those are replayed.
 
-- MUST buffer at least 64KB of output per session
-- MUST hold sessions for at least 60 seconds after disconnect
-- SHOULD provide configurable buffer size and timeout
-- MUST reject resume if buffer overflowed (client must start fresh)
-- All open channels are preserved across resume
+Case 3 is safe. The peer has seen no close of this instance in either direction, because a close it had sent would make it omit the entry, and so it cannot have reused the ID: an opener reuses an ID only after it has both sent and received CLOSE_CHANNEL. For example, suppose the server sends data on channel 5 and then CLOSE_CHANNEL. The client receives both, replies with CLOSE_CHANNEL, and reopens 5, but its reply and the OPEN_CHANNEL are lost with the transport. The client lists the new 5 with count 0. The server's retained data for the old 5 is discarded by rule 2, because the client's channel-0 count covers the server's CLOSE_CHANNEL. The client's replayed reply and OPEN_CHANNEL then arrive in order.
 
-## Client Requirements
+Retransmitting in the original order keeps the cross-channel order a single-stream binding gives (for example, a channel's last data before its CLOSE_CHANNEL).
 
-- MUST store session ID in memory (not persisted to disk)
-- MUST track last received sequence number
-- SHOULD attempt RESUME_REQUEST before falling back to fresh HELLO
-- MUST handle RESUME_RESPONSE failure gracefully (fall back to new HELLO)
+**Unreliable channels** stay open. Their frames are not retained, and those lost with the transport are lost. **Reliable, unordered channels** (possible only with [webrtc-multichannel](webrtc-multichannel.md)) cannot be counted. On resume each side MUST close them with CLOSE_CHANNEL `1001`.
 
-## Security Considerations
+**After resuming**, RTT smoothing ([core §8.1](../core.md#81-ping-0x10-and-pong-0x11)) SHOULD start again from fresh samples, because the path has probably changed. Keepalive restarts.
 
-- Session IDs MUST be cryptographically random (min 128 bits entropy)
-- Session IDs MUST NOT be logged in plaintext
-- Servers SHOULD bind sessions to client token to prevent hijacking
-- Resume timeout SHOULD be limited to prevent resource exhaustion
+## 8. Security
+
+- The token is a bearer secret. It MUST be generated by a CSPRNG, MUST be compared in constant time, and MUST NOT be logged. Clients MUST keep it in memory only.
+- RESUME_TOKEN, RESUMED and RESUME MUST NOT be sent over a transport that is not encrypted, except on local bindings (stdio, Unix sockets), the same rule as for HELLO `auth`.
+- **Single use.** A token is valid for one successful resume. RESUMED always carries a new one, and the old one stays valid only until the client confirms it ([§3.3](#33-resumed-0x32-server--client)). A captured token is therefore useless once the real client has resumed, and if an attacker resumes first, the real client's RESUME fails visibly with `4100`.
+- **Binding to the original session.** If the server authenticated the client in HELLO (by `auth` or by the transport, such as a cookie or a client certificate), it MUST authenticate RESUME by the same means, and MUST reject it with `4000` unless the identity is the same as the original session's. A token alone does not let one identity take over another's session.
+- **Replay.** RESUME MUST NOT be sent in TLS or QUIC 0-RTT early data. Early data can be replayed, and a replayed RESUME would take over the session.
+- **Resource limits.** A detached session holds at most its flow-control windows, its per-channel frame limits ([§5](#5-acknowledging-and-retaining)) and its channel-0 retention. Servers SHOULD also cap the number of detached sessions per identity and in total, and MAY discard detached sessions early under memory pressure (resumes then fail with `4100`). Servers SHOULD rate-limit failed RESUMEs per source.
+
+## 9. Codes
+
+| Code | Name | Meaning |
+|---|---|---|
+| 4100 | RESUME_NOT_FOUND | Unknown or invalid token, or the session is gone |
+| 4101 | RESUME_EXPIRED | The session existed but was discarded after `resumeTimeout` |
+| 4102 | RESUME_DATA_LOST | A frame needed for the resume is no longer retained |
+| 4103 | RESUME_STATE_MISMATCH | Receive counts that cannot be right (more than was sent) |
+
+A client that receives any of these on RESUME SHOULD fall back to a new HELLO and tell the application that the earlier session is lost.
+
+## 10. Implementation notes
+
+- The extension sits between the frame transport and the session (see the io-stack layering proposal, `docs/design/io-stack.md`, in a separate pull request): to the core, a resumed connection looks like one unbroken frame stream. It does need to know which channels are open and their effective properties, so it is not a pure transport wrapper.
+- A retained frame can share the buffer that was sent. Retention adds no copy if the sender does not reuse that buffer until the RECEIPT.
+- Neither 0.2 implementation (Go [libxumux-go](https://github.com/deftai/libxumux-go), TypeScript [libxumux](https://github.com/deftai/libxumux)) lets a session outlive its transport today. Both would need a way to swap the frame transport under a live session.
+
+## Open questions
+
+1. **Implicit counts or explicit sequence numbers.** This draft counts frames and puts nothing in the frame. That works because each replayed channel is ordered on its path. Explicit per-frame sequence numbers would also cover reliable, unordered channels, but would change the wire format of every frame when the extension is on, which a bridge would then have to understand. *Recommendation:* keep implicit counts, and close reliable, unordered channels on resume.
+2. **Multi-path bindings.** With [webrtc-multichannel](webrtc-multichannel.md) or a QUIC stream per channel, a resume would have to re-create the per-channel paths (new DataChannels and SDP, or new streams) before retransmitting. The counting already works per channel, but the rebinding steps are not specified. *Recommendation:* in `/1`, resume only reliable, ordered channels that use the base path, close channels that have their own path with `1001`, and specify rebinding with each multi-path binding later.
+3. **Encoding of `received`.** JSON pairs cost about 15 bytes per channel, so a session with more than about 4000 open channels does not fit in the 65536-byte channel-0 limit. *Recommendation:* keep JSON, and let a RESUME that would not fit fail locally (the client falls back to HELLO). Revisit if large channel counts become real. A binary payload is the alternative.
+4. **Bearer token or proof of possession.** A token plus single use plus re-authentication is simple and works through any bridge. Binding the token to the TLS session (an RFC 9266 exporter) or using a challenge would stop a stolen token from being usable at all, but costs a round trip or needs the TLS exporter, which browsers do not expose. *Recommendation:* bearer token for `/1`.
+5. **Who keeps how much.** The client also retains and replays (client-to-server data lost with the transport). That is symmetric and adds no wire cost. The remaining question is whether `resumeTimeout` should be a client request plus a server decision, like `pingInterval`. *Recommendation:* server-declared only; the client cannot make the server hold memory longer.
+6. **RECEIPT frequency defaults** (32 KiB / 64 frames on channel 0) need measurement on real traffic, especially terminal traffic, which is many small messages.
+7. **Load-balanced servers.** A RESUME can reach a different server process than the one holding the session. The token is opaque, so a deployment can encode a routing hint in it. *Recommendation:* say nothing normative and leave routing to deployments.
+8. **Abandoning a session.** A client that gives up has no way to tell the server to free the detached session before `resumeTimeout` ends. A `RESUME` with `"abandon": true`, answered by CLOSE `1000`, would do it. *Recommendation:* add it if servers report memory pressure from detached sessions. Not needed for `/1`.
+9. **Version bump.** RESUME has to be the first frame, which changes [core §3.1](../core.md#31-rules) ("the client's first frame MUST be HELLO"). An extension is allowed to change core behaviour, but the server only knows the extension is in use *after* recognising RESUME. *Recommendation:* add one sentence to core §3.1: "An extension MAY define another first frame for a new transport that continues an existing connection; a server that does not implement it closes with `1002` as usual."
