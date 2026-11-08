@@ -57,7 +57,7 @@ Today: Go `io.ReadWriteCloser` plus `HalfCloser`, and Go `MessageTransport`. TS 
 
 ### 3.2 Framing → Session: frame paths
 
-A **FramePath** carries whole frames in order:
+A **FramePath** carries whole frames, with the delivery guarantees its `properties` report (in order only if `ordered`):
 
 ```
 readFrame(limit(channel)) → Frame      // rejects Payload Length > limit before reading it (core §2.3 step 1)
@@ -100,7 +100,7 @@ Channel:  id, name, metadata, properties
 
 ### 3.4 Extension hooks
 
-An extension may use only these hooks, and only after it has been negotiated:
+An extension may use only these hooks. It may offer fields in HELLO/WELCOME, and prepare paths before acceptance where its specification permits (webrtc-multichannel creates DataChannels before HELLO), but its behaviour takes effect only once it has been negotiated:
 
 | Hook | Layer | Used by |
 |---|---|---|
@@ -159,7 +159,7 @@ Two rules carry most of the weight:
 | core.md §11 | 3–4 | extension, binding and profile rules |
 | [bindings/tcp](../../spec/bindings/tcp.md), [stdio](../../spec/bindings/stdio.md) | 1–2 | ByteStream; one base path with magic |
 | [bindings/websocket](../../spec/bindings/websocket.md), [webrtc](../../spec/bindings/webrtc.md) | 1–2 | MessagePipe; one base path |
-| [bindings/quic](../../spec/bindings/quic.md) | 1–2 | ByteStream (session stream), no magic |
+| [bindings/quic](../../spec/bindings/quic.md) | 1–2 | *As proposed in deftai/xumux#8:* ByteStream (one session stream), no magic. The document on `main` is still the 0.1-era stream-per-channel draft |
 | [extensions/webrtc-multichannel](../../spec/extensions/webrtc-multichannel.md) | 2 (+3 fields) | PathProvider over DataChannels |
 | quic-multistream (proposed) | 2 (+3 fields, flow-control scope) | PathProvider over streams and datagrams |
 | [extensions/session-resume](../../spec/extensions/session-resume.md) | 2–3 | replaces the base path under a live session. It needs channel states and properties, so it is not a pure path wrapper |
@@ -189,12 +189,12 @@ Both implementations agree on layers 3 and 5. The differences are where framing 
 3. **core §11.2 Bindings:** a checklist each binding document must answer: transport kind (stream or messages); identification (magic, subprotocol, ALPN); framing; the base path's properties; how transport close and errors map to xumux codes; keepalive interplay; security.
 4. **core §11.1 Extensions:** the hook list of §3.4, as the definition of what an extension may change. Also, whether extensions get a parameter slot in HELLO/WELCOME ([Open question 4](#10-open-questions)).
 5. **core §11.3 Profiles:** a profile document states its required properties, whether it needs credit release later than "message taken" (pipe/1 does), and its codes.
-6. **core §3.1:** allow an extension to define another first frame on a new transport (needed by session-resume).
+6. **core §3.1** *(behaviour change)*: allow an extension to define another first frame on a new transport (needed by session-resume).
 7. **Bindings:** each gets a one-line "Provides:" header (for example "one ByteStream base path, magic `XMUX`").
 8. **README:** extend "How it is layered" with the layer column, and link this design.
 9. **Conformance:** split vectors into framing (layer 2: bytes ↔ frames, limits) and session behaviour (layer 3: scripted exchanges). That matches the behavioural-conformance work planned for v0.4.
 
-None of these change the wire format.
+Items 1–5 and 7–9 are editorial: they describe what 0.2 already does and change no wire behaviour. Item 6, and the `extensionParams` slot of [Open question 4](#10-open-questions), change what a conforming peer may send, so they belong to a release with a version bump.
 
 ### 8.2 libxumux-go
 
@@ -218,7 +218,7 @@ A **frame relay** forwards frames between two transports without running a sessi
 
 1. **How normative.** Should the interfaces in §3 be normative, or only the layer boundaries and the rules in §4? *Recommendation:* make the boundaries, the terms (frame path, base path) and the extension hook list normative in core §1 and §11. Keep the API shapes informative in this document, since language idioms differ.
 2. **PathProvider in the core or only in extensions.** Core §5.2 already has multi-path rules (holding frames that overtake the ACK). Defining "paths" in the core would let both multi-path extensions share one set of rules for opening, binding and ID reuse. *Recommendation:* define the concept and the shared rules in the core, and leave concrete paths to bindings and extensions.
-3. **Version number.** None of §8.1 changes the wire. Under [core §3.5](../../spec/core.md#35-version-negotiation), 0.2 and 0.3 cannot talk, so bumping the minor for a layering rewrite alone would break interop for nothing. *Recommendation:* publish the layering as 0.2.x editorial changes, and keep the 0.3 version number for the first release that also has a wire change (for example the core §3.1 first-frame rule, or extension parameters).
+3. **Version number.** The editorial part of §8.1 changes no wire behaviour. Under [core §3.5](../../spec/core.md#35-version-negotiation), 0.2 and 0.3 cannot talk, so bumping the minor for a layering rewrite alone would break interop for nothing. *Recommendation:* publish the editorial items as 0.2.x, and put the behaviour changes (the core §3.1 first-frame rule, extension parameters) in 0.3, together with whatever first needs them (session-resume/1).
 4. **Extension parameters.** HELLO and WELCOME `extensions` are plain strings, so an extension with parameters needs its own message (session-resume's RESUME_TOKEN) or new top-level fields. *Recommendation:* add an optional `extensionParams` object keyed by extension name to HELLO and WELCOME, ignored unless that extension is accepted. This is a wire change, so it goes with the 0.3 bump in question 3.
 5. **Reserved-flag checks in framing or the session.** This draft puts core §2.3 step 3 in the session, so framing is extension-agnostic. Go and TS both check it in their frame codec today (`frame.go`, `decode-frame.ts`). *Recommendation:* the session, with the decoder free to pre-check when no extension defines flags.
 6. **Credit release in the interface.** Should "consume later than take" be a core concept (core §6 "consumed" redefined as "released by the layer above"), or an implementation detail? *Recommendation:* a sentence in core §6 that the point of consumption MAY be set by the profile, with pipe/1 as the example. It already depends on it.
