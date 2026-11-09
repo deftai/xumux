@@ -79,6 +79,8 @@ The limits, keepalive parameters, extensions and `application` of the session do
 
 **Confirming the new token.** RESUMED is not replayed, so if the new transport fails before RESUMED arrives, the client still has only the old token. The client MUST therefore send a RECEIPT for channel 0 as its first frame after RESUMED. Until the server receives any frame from the client on the transport that carried RESUMED, it MUST accept both the old token and the new one. After that, it accepts only the new one. A successful resume with either token invalidates the other.
 
+**Token order after a resume.** Which token is current follows the order in which the client *receives* tokens, not the order the server made them. A RESUME_TOKEN that was unacknowledged when the transport was lost is retransmitted after RESUMED ([§7](#7-resuming) step 5), so it arrives after RESUMED's token and replaces it at the client. The server MUST therefore keep such a retransmitted token valid, and retires RESUMED's token by the [§3.1](#31-resume_token-0x30-server--client) rule, once the retransmitted RESUME_TOKEN is acknowledged.
+
 ### 3.4 RECEIPT (`0x33`)
 
 Binary payload of one or more 6-byte entries, the same shape as WINDOW_UPDATE:
@@ -118,7 +120,7 @@ When `session-resume/1` applies, a transport that ends **without** a completed C
 - The session, its channels and their state stay as they are. Application sends on reliable channels queue as usual until credit runs out, so the existing backpressure applies. Messages sent on unreliable channels while detached MAY be dropped.
 - Keepalive is suspended. PINGs that were outstanding are abandoned and SHOULD NOT be counted as lost.
 - A keepalive timeout ([core §8.2](../core.md#82-keepalive)) detaches the session instead of closing it. The side MUST close the transport and MUST NOT send CLOSE `4008`, since that would end the session.
-- The server keeps the detached session for at least `resumeTimeout` seconds, then discards it. The client SHOULD stop trying to resume after `resumeTimeout` seconds.
+- The server keeps the detached session for at least `resumeTimeout` seconds, then discards it. The client SHOULD stop trying to resume after `resumeTimeout` seconds. It then ends the session locally and reports it to the application as `4101` (RESUME_EXPIRED), the code the server would send.
 - A server that receives a valid RESUME for a session that still appears attached MUST treat it as a takeover: it stops reading the old transport, closes it without sending CLOSE, and then answers on the new one. The client often learns of a failure before the server does.
 
 Sending or receiving CLOSE ends the session for good. It can no longer be resumed, and a side that loses the transport during a CLOSE exchange discards the session.
@@ -161,7 +163,7 @@ Retransmitting in the original order keeps the cross-channel order a single-stre
 
 **Unreliable channels** on the base path stay open. Their frames are not retained, and those lost with the transport are lost.
 
-**Channels on their own path** (with [webrtc-multichannel](webrtc-multichannel.md), for example) lost that path with the transport. That includes every reliable, unordered channel, since the base path is ordered. On resume, each side MUST close every such channel with CLOSE_CHANNEL `1001` after its retransmissions. A channel it still has in Opening state it closes once CHANNEL_ACK arrives. A request for such a channel that it has received but not yet answered, it rejects with `1001`. Re-creating such paths on resume is not part of `/1`.
+**Channels on their own path** (with [webrtc-multichannel](webrtc-multichannel.md), for example) lost that path with the transport. That includes every reliable, unordered channel, since the base path is ordered. On resume, each side MUST close every such channel with CLOSE_CHANNEL `1001` after its retransmissions. A channel it still has in Opening state it closes once CHANNEL_ACK arrives. A request for such a channel that it has received but not yet answered, it rejects with `1001`. Re-creating such paths on resume is not part of `/1`. On a binding with only a base path no channel is on its own path, so this rule applies only with an extension that adds paths.
 
 **RESUME too large.** RESUME and RESUMED, like every channel-0 payload, MUST NOT exceed 65536 bytes ([core §4](../core.md#4-control-messages)). A client whose RESUME would not fit MUST NOT send it. It treats the session as lost and falls back to HELLO. A server whose RESUMED would not fit closes with `4102`.
 
@@ -186,6 +188,8 @@ Retransmitting in the original order keeps the cross-channel order a single-stre
 | 4103 | RESUME_STATE_MISMATCH | Receive counts that cannot be right (more than was sent) |
 
 A client that receives any of these on RESUME SHOULD fall back to a new HELLO and tell the application that the earlier session is lost. The same applies to CLOSE `1002` from a server that no longer implements the extension ([core §3.1](../core.md#31-rules)), and to `4006` from a server that no longer speaks the session's version.
+
+**Other refusals.** CLOSE `1001` (GOING_AWAY), `4004` (RATE_LIMITED), `4007` (HELLO_TIMEOUT) and `4011` (BUSY) on RESUME say nothing about the session, which the server keeps ([§7](#7-resuming) step 2). A client that receives one MAY try again on another new transport, with backoff, until `resumeTimeout` has passed. Any other code, including `4000`, ends the session at the client: it tells the application that the session is lost and does not resume it again.
 
 ## 10. Implementation notes
 
