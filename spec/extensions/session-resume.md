@@ -79,7 +79,7 @@ The limits, keepalive parameters, extensions and `application` of the session do
 
 **Confirming the new token.** RESUMED is not replayed, so if the new transport fails before RESUMED arrives, the client still has only the old token. The client MUST therefore send a RECEIPT for channel 0 as its first frame after RESUMED. Until the server receives any frame from the client on the transport that carried RESUMED, it MUST accept both the old token and the new one. After that, it accepts only the new one. A successful resume with either token invalidates the other.
 
-**Token order after a resume.** Which token is current follows the order in which the client *receives* tokens, not the order the server made them. A RESUME_TOKEN that was unacknowledged when the transport was lost is retransmitted after RESUMED ([§7](#7-resuming) step 5), so it arrives after RESUMED's token and replaces it at the client. The server MUST therefore keep such a retransmitted token valid, and retires RESUMED's token by the [§3.1](#31-resume_token-0x30-server--client) rule, once the retransmitted RESUME_TOKEN is acknowledged.
+**Token order after a resume.** Which token is current follows the order in which the client *receives* tokens, not the order the server made them. A RESUME_TOKEN not covered by the client's RESUME `received` counts is retransmitted after RESUMED ([§7](#7-resuming) step 5), so it arrives after RESUMED's token and replaces it at the client. The server MUST therefore keep such a retransmitted token valid, and retires RESUMED's token by the [§3.1](#31-resume_token-0x30-server--client) rule, once the retransmitted RESUME_TOKEN is acknowledged.
 
 ### 3.4 RECEIPT (`0x33`)
 
